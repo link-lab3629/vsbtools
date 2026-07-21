@@ -1,6 +1,5 @@
 import logging
 import os
-import shutil
 from pathlib import Path
 from typing import Any, Dict, Callable
 from pymatgen.core import Composition
@@ -146,6 +145,7 @@ def build_guidance_summary_table(name_ds_dict: Dict[str, CrystalDataset],
             losses_prefixes = [loss.replace('loss_', '') + '_' for loss in losses]
 
         if max_pareto_front is not None:
+            entries_by_id = {str(entry.id): entry for entry in name_ds_dict[stage]}
             for j, gl_name in enumerate(losses):
                 max_el_db = summary_df[summary_df['composition'].apply(lambda x: len(Composition(x))) == len(name_ds_dict[stage].elements)].sort_values('e_hull/at')
                 fronts_idx, rank = pareto_subdataframe_indices(max_el_db, ['e_hull/at', gl_name],  max_pareto_front)
@@ -156,8 +156,12 @@ def build_guidance_summary_table(name_ds_dict: Dict[str, CrystalDataset],
                     pf_dir = name_ds_dict[stage].base_path / f"{losses_prefixes[j]}pf_{i+1}"
                     os.makedirs(pf_dir, exist_ok=True)
                     for k, idx in enumerate(idx_pf):
-                        shutil.copy2(name_ds_dict[stage].base_path / "POSCARS" / f"{max_el_db.iloc[idx].id}POSCAR",
-                                     pf_dir / f"{k+1}_{max_el_db.iloc[idx].id}POSCAR")
+                        entry_id = str(max_el_db.iloc[idx].id)
+                        entry = entries_by_id.get(entry_id)
+                        if entry is None:
+                            LOG.warning("Skipping missing Pareto POSCAR export for %s", entry_id)
+                            continue
+                        entry.structure.to(fmt="poscar", filename=pf_dir / f"{k+1}_{entry_id}POSCAR", comment=entry_id)
 
 
 

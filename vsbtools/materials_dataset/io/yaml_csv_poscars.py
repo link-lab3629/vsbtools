@@ -1,4 +1,9 @@
+import ast
+import csv
 import os
+import re
+import tempfile
+import zipfile
 from collections.abc import Iterable
 from typing import Dict, Any
 from pathlib import Path
@@ -45,12 +50,28 @@ def _get_str_value_for_csv(e: CrystalEntry, attr_name):
     else:
         val = getattr(e, attr_name)
     if isinstance(val, float):
-        val = f"{val:.6f}"
-    elif isinstance(val, Iterable) and not isinstance(val, str):
-        val = str(val).replace(',', '')
-    else:
-        val = str(val).strip()
-    return val
+        return f"{val:.6f}"
+    return str(val).strip()
+
+
+def _parse_metadata_value(val: str):
+    if val in ['NA', 'None', '']:
+        return None
+    if val == 'set()':
+        return set()
+    if val in ['True', 'False']:
+        return val == 'True'
+    if not val or val[0] not in ("{", "[", "(", "\'", '"'):
+        return val
+
+    try:
+        return ast.literal_eval(val)
+    except (SyntaxError, ValueError):
+        repaired = re.sub(r"(?<=[}\]'\"])\s+('(?:[^'\\]|\\.)+'\s*:)", r", \1", val)
+        try:
+            return ast.literal_eval(repaired)
+        except (SyntaxError, ValueError):
+            return val
 
 def _remove_private_keys(dct, recursive=True):
     for key in [k for k in dct if k.startswith('_')]:
@@ -89,7 +110,7 @@ def write(dataset: CrystalDataset, enforce_base_path: str | Path | None = None, 
     dataset.base_path.mkdir(parents=True, exist_ok=True)
     manifest_yaml = dataset.base_path / "manifest.yaml"
     csv_file = manifest_yaml.with_name('data.csv')
-    poscars_path = manifest_yaml.with_name('POSCARS')
+    poscars_path = manifest_yaml.with_name('POSCARS.zip')
     write_csv_poscars(dataset, csv_file, poscars_path, **kwargs)
     ds_dict = dataset.__dict__.copy()
     _remove_private_keys(ds_dict)
@@ -102,35 +123,54 @@ def write(dataset: CrystalDataset, enforce_base_path: str | Path | None = None, 
     print(f"Data saved to {dataset.base_path.as_posix()}")
 
 
+def _load_structures_from_poscars(poscars_path: Path, structure_refs: list[str]) -> dict[str, Structure]:
+    if poscars_path.is_dir():
+        return {ref: Structure.from_file(poscars_path / ref) for ref in set(structure_refs)}
+    if poscars_path.is_file():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with zipfile.ZipFile(poscars_path) as archive:
+                archive.extractall(tmpdir)
+            root = Path(tmpdir)
+            return {ref: Structure.from_file(root / ref) for ref in set(structure_refs)}
+    raise FileNotFoundError(f"POSCARS path does not exist: {poscars_path}")
+
+
 def read_csv_poscars(csv_file, poscars_dir=None, use_fname_as_id=True) -> CrystalDataset:
     csv_file = Path(csv_file)
-    poscars_dir = poscars_dir or csv_file.with_name(csv_file.stem + 'POSCARS')
+    if poscars_dir:
+        poscars_dir = Path(poscars_dir)
+    else:
+        poscars_dir = csv_file.with_name(csv_file.stem + 'POSCARS.zip')
+        legacy_poscars_dir = csv_file.with_name(csv_file.stem + 'POSCARS')
+        if not poscars_dir.exists() and legacy_poscars_dir.exists():
+            poscars_dir = legacy_poscars_dir
     dataset_ID = csv_file.stem if use_fname_as_id else None
-    with open(csv_file, 'rt') as csv_h:
-        labels = [h.strip() for h in csv_h.readline().split(',')]
-        entries = []
-        for i, line in enumerate(csv_h):
-            entry_data: Dict[str, Any] = {k: v for (k,v) in zip(labels, [h.strip() for h in line.split(',')])}
+    with open(csv_file, 'rt', newline='') as csv_h:
+        reader = csv.DictReader(csv_h)
+        labels = reader.fieldnames or []
+        entries_data = []
+        structure_refs = []
+        for i, row in enumerate(reader):
+            entry_data: Dict[str, Any] = {k: (v.strip() if isinstance(v, str) else v) for k, v in row.items() if k is not None}
             entry_data["metadata"] = dict()
             if not "id" in labels:
                 entry_data["id"] = str(i)
             if 'energy' in entry_data:
                 entry_data['energy'] = float(entry_data['energy']) if entry_data['energy'] != 'None' else None
             if 'structure' in entry_data:
-                entry_data['structure'] = Structure.from_file(poscars_dir / entry_data['structure'])
+                structure_refs.append(entry_data.pop('structure'))
             for l in labels:
                 if 'metadata.' in l:
                     val = entry_data.pop(l)
-                    if val in ['True', 'False', 'set()']:
-                        val = eval(val)
-                    elif val in ['NA', 'None']:
-                        val = None
-                    elif val[0] == '{' and val[-1] == '}':
-                        val = eval(val.replace(' ', ','))
-                    entry_data["metadata"][l.split('.')[-1]] = val
+                    entry_data["metadata"][l.split('.')[-1]] = _parse_metadata_value(val)
             entry_keys = [k for k in entry_data if k in CrystalEntry.__annotations__.keys()]
             entry_data = {k: entry_data[k] for k in entry_keys}
-            entries.append(CrystalEntry(**entry_data))
+            entries_data.append(entry_data)
+    if 'structure' in labels:
+        structures = _load_structures_from_poscars(poscars_dir, structure_refs)
+        for entry_data, structure_ref in zip(entries_data, structure_refs):
+            entry_data["structure"] = structures[structure_ref]
+    entries = [CrystalEntry(**entry_data) for entry_data in entries_data]
     return CrystalDataset(entries,
                           dataset_id=dataset_ID,
                           message=f'Loaded from {csv_file}',
@@ -147,13 +187,23 @@ def write_csv_poscars(ds: CrystalDataset,
     base_path = getattr(ds, "basepath", Path(os.getcwd()))
     base_path.mkdir(exist_ok=True)
     csv_file = csv_file or base_path / 'data.csv'
-    poscars_path = poscars_path or csv_file.with_name(csv_file.stem + 'POSCARS')
-    poscars_path.mkdir(exist_ok=True)
-    with open(csv_file, 'wt') as csv_h:
-        csv_h.write(','.join(labels) + '\n')
-        for e in ds:
-            csv_h.write((",".join([_get_str_value_for_csv(e, label) for label in labels])).strip() + '\n')
-            e.structure.to(fmt="poscar", filename=poscars_path / _get_str_value_for_csv(e, "structure"), comment=e.id)
+    poscars_path = poscars_path or csv_file.with_name(csv_file.stem + 'POSCARS.zip')
+    with open(csv_file, 'wt', newline='') as csv_h:
+        writer = csv.writer(csv_h)
+        writer.writerow(labels)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            poscars_dir = Path(tmpdir)
+            poscar_refs = []
+            for e in ds:
+                writer.writerow([_get_str_value_for_csv(e, label) for label in labels])
+                structure_ref = _get_str_value_for_csv(e, "structure")
+                poscar_file = poscars_dir / structure_ref
+                poscar_file.parent.mkdir(parents=True, exist_ok=True)
+                e.structure.to(fmt="poscar", filename=poscar_file, comment=e.id)
+                poscar_refs.append((poscar_file, structure_ref.replace('\\', '/')))
+            with zipfile.ZipFile(poscars_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                for poscar_file, structure_ref in poscar_refs:
+                    archive.writestr(structure_ref, poscar_file.read_bytes())
 
 
 def gather_metadata_fields(dataset):
