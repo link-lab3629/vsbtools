@@ -17,6 +17,7 @@ from ..analysis.similarity_tools import SimilarityTools, describe_similarity_too
 from ..analysis.structural_distance.dscribe_bridge import DScribeBridge
 
 CACHE_DIR = database_cache_dir()
+POLL_DB_CACHE_SCHEMA_VERSION = 2
 MAX_EHULL = 0.5  # Maximum energy above hull in eV/atom for filtering
 TOL_FP = 0.008
 LOADERS = {
@@ -36,7 +37,7 @@ OPTIMADE_FALLBACK_PROVIDERS = {
 
 def poll_databases(elements,
                    database_names=None,
-                   pref_db: str = 'op',
+                   pref_db: str = 'al',
                    do_ehull_filtering=True,
                    max_ehull=None,
                    do_deduplication=True,
@@ -52,7 +53,19 @@ def poll_databases(elements,
     are added.
     """
 
-    parameters_dict: Dict[str, str|float|int|bool|None] = {
+    if loader_kwargs is None:
+        loader_kwargs = {}
+    if isinstance(database_names, str):
+        database_names = [database_names]
+    else:
+        database_names = list(database_names or ['alexandria', 'oqmd', 'MatProj'])
+    pref_db = pref_db[:2].casefold()
+
+    parameters_dict: Dict[str, object] = {
+        'cache_schema_version': POLL_DB_CACHE_SCHEMA_VERSION,
+        'database_names': database_names,
+        'preferred_database': pref_db,
+        'loader_kwargs': serialize_structure(loader_kwargs),
         'e_hull_filtering': do_ehull_filtering,
         'deduplication': do_deduplication,
         'optimade_fallback': optimade_fallback,
@@ -86,12 +99,6 @@ def poll_databases(elements,
         except (AssertionError, KeyError):
             print("Incorrect db file")
         print("Failed to read cached DB")
-
-
-    if loader_kwargs is None: loader_kwargs = dict()
-
-    pref_db = pref_db[:2].casefold()
-    database_names = database_names or ['optimade'] #, 'alexandria', 'oqmd', 'MatProj']  # Default databases to fetch data from
     short_names_dict = {name[:2].casefold(): name for name in database_names}
     loader_kw = defaultdict(dict, {k.casefold()[:2]: v for k, v in loader_kwargs.items()})
     for db in short_names_dict:

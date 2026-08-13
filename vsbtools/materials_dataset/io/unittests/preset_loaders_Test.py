@@ -2,7 +2,7 @@ import unittest
 import io
 from contextlib import redirect_stderr
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 from ...io import preset_loaders as preset_loaders_module
 from ...io.preset_loaders import (load_from_materials_project,
                                                                                 load_from_oqmd,
@@ -86,6 +86,7 @@ class DSLoaders_Test(unittest.TestCase):
 
     def test_load_from_optimade_direct_interface(self):
         query_df = Mock(name="query_df")
+        query_df.empty = False
         dataset = Mock(name="dataset")
         client = Mock()
         client.query.return_value = query_df
@@ -108,7 +109,9 @@ class DSLoaders_Test(unittest.TestCase):
     def test_load_from_optimade_uses_provider_cache_loaders(self):
         query_df = Mock(name="query_df")
         dataset = Mock(name="dataset")
-        provider_datasets = [Mock(name="oqmd_dataset"), Mock(name="alexandria_dataset")]
+        provider_datasets = [MagicMock(name="oqmd_dataset"), MagicMock(name="alexandria_dataset")]
+        for provider_dataset in provider_datasets:
+            provider_dataset.__len__.return_value = 1
 
         with patch.object(preset_loaders_module, "_load_from_optimade_provider",
                           side_effect=provider_datasets) as provider_loader, \
@@ -171,6 +174,69 @@ class DSLoaders_Test(unittest.TestCase):
         self.assertIn("WARNING", err.getvalue())
         self.assertIn("falling back to local OQMD loader", err.getvalue())
         self.assertIs(result, dataset)
+
+    def test_load_from_optimade_falls_back_all_providers_to_one_energy_basis(self):
+        query_df = Mock(name="query_df")
+        dataset = Mock(name="dataset")
+        alexandria_dataset = [_FakeEntry()]
+        materials_project_dataset = [_FakeEntry()]
+        oqmd_dataset = [_FakeEntry()]
+        provider_error = RuntimeError("OPTIMADE request failed with HTTP 500")
+
+        err = io.StringIO()
+        with patch.object(preset_loaders_module, "_load_from_optimade_provider",
+                          side_effect=provider_error) as provider_loader, \
+                patch.object(preset_loaders_module, "load_from_alexandria",
+                             return_value=alexandria_dataset) as alexandria_loader, \
+                patch.object(preset_loaders_module, "load_from_materials_project",
+                             return_value=materials_project_dataset) as mp_loader, \
+                patch.object(preset_loaders_module, "load_from_oqmd",
+                             return_value=oqmd_dataset) as oqmd_loader, \
+                patch.object(preset_loaders_module, "_optimade_provider_datasets_to_df",
+                             return_value=query_df) as datasets_to_df, \
+                patch.object(preset_loaders_module, "df2ds", return_value=dataset), \
+                redirect_stderr(err):
+            result = load_from_optimade.__wrapped__(
+                {'Mo', 'Si'},
+                providers=["alexandria", "materials_project", "oqmd"],
+            )
+
+        provider_loader.assert_called_once()
+        alexandria_loader.assert_called_once()
+        mp_loader.assert_called_once()
+        oqmd_loader.assert_called_once()
+        self.assertEqual(
+            datasets_to_df.call_args.args[2],
+            [alexandria_dataset, materials_project_dataset, oqmd_dataset],
+        )
+        self.assertIn("loading every provider through its direct client", err.getvalue())
+        self.assertIs(result, dataset)
+
+    def test_load_from_optimade_treats_empty_provider_as_fallback_trigger(self):
+        empty_dataset = []
+        local_dataset = [_FakeEntry()]
+        query_df = Mock(name="query_df")
+        result_dataset = Mock(name="result_dataset")
+
+        with patch.object(preset_loaders_module, "_load_from_optimade_provider",
+                          return_value=empty_dataset), \
+                patch.object(preset_loaders_module, "load_from_materials_project",
+                             return_value=local_dataset) as mp_loader, \
+                patch.object(preset_loaders_module, "_optimade_provider_datasets_to_df",
+                             return_value=query_df), \
+                patch.object(preset_loaders_module, "df2ds", return_value=result_dataset), \
+                redirect_stderr(io.StringIO()):
+            result = load_from_optimade.__wrapped__(
+                {'Mo', 'Si'},
+                providers=["materials_project"],
+            )
+
+        mp_loader.assert_called_once()
+        self.assertEqual(
+            local_dataset[0].metadata["optimade_fallback"]["provider"],
+            "materials_project",
+        )
+        self.assertIs(result, result_dataset)
 
     def test_optimade_default_timeout_is_long(self):
         self.assertEqual(preset_loaders_module.OptimadeClient(show_progress=False).timeout, 1000.0)

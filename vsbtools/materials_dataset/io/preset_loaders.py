@@ -16,6 +16,7 @@ from .sources.structure_and_energy_files_reader import CSV_and_POSCARS_client
 mp_client = MPClient()
 oqmd_client = OQMDClient()
 CACHE_DIR = database_cache_dir()
+LOADER_CACHE_SCHEMA_VERSION = 2
 _RED = "\033[1;31m"
 _RESET = "\033[0m"
 
@@ -57,8 +58,7 @@ def _kwargs_hash(kwargs: Dict[str, Any]) -> str:
             "progress_total_providers",
         )
     }
-    if not filtered:
-        return "none"
+    filtered["loader_cache_schema_version"] = LOADER_CACHE_SCHEMA_VERSION
     payload = json.dumps(filtered, sort_keys=True, default=repr).encode("utf-8")
     return hashlib.sha1(payload).hexdigest()[:10]
 
@@ -144,6 +144,11 @@ def load_from_optimade(elements, message=None, **kwargs):
         try:
             optimade_client = OptimadeClient(**kwargs)
             df = optimade_client.query(elements)
+            if df.empty:
+                provider_names = _optimade_provider_names(kwargs)
+                raise RuntimeError(
+                    f"OPTIMADE provider '{provider_names[0]}' returned no usable entries"
+                )
         except RuntimeError as err:
             provider_names = _optimade_provider_names(kwargs)
             if len(provider_names) != 1:
@@ -159,7 +164,7 @@ def load_from_optimade(elements, message=None, **kwargs):
 
     provider_names = _optimade_provider_names(kwargs)
     provider_datasets = []
-    fallback_provider_names = []
+    fallback_trigger = None
     for provider_no, provider_name in enumerate(provider_names, start=1):
         provider_kwargs = dict(kwargs)
         provider_kwargs["providers"] = [provider_name]
@@ -170,17 +175,25 @@ def load_from_optimade(elements, message=None, **kwargs):
         provider_kwargs["progress_total_providers"] = len(provider_names)
         provider_message = f"Full {elements} system from OPTIMADE provider {provider_name}"
         try:
-            provider_datasets.append(_load_from_optimade_provider(elements, message=provider_message, **provider_kwargs))
-        except RuntimeError as err:
-            fallback_provider_names.append(provider_name)
-            provider_datasets.append(
-                _load_from_optimade_fallback_provider(
-                    elements,
-                    provider_name,
-                    err,
-                    message=provider_message,
-                )
+            provider_dataset = _load_from_optimade_provider(
+                elements,
+                message=provider_message,
+                **provider_kwargs,
             )
+            if len(provider_dataset) == 0:
+                raise RuntimeError(
+                    f"OPTIMADE provider '{provider_name}' returned no usable entries"
+                )
+            provider_datasets.append(provider_dataset)
+        except RuntimeError as err:
+            fallback_trigger = (provider_name, err)
+            provider_datasets = _load_all_providers_locally(
+                elements,
+                provider_names,
+                trigger_provider=provider_name,
+                err=err,
+            )
+            break
 
     show_progress = kwargs.get("show_progress", True)
     status_len = 0
@@ -195,9 +208,12 @@ def load_from_optimade(elements, message=None, **kwargs):
     df = _optimade_provider_datasets_to_df(elements, provider_names, provider_datasets, kwargs, progress=progress)
     if show_progress and status_len:
         print()
-    if message is None and fallback_provider_names:
-        fallbacks = ", ".join(fallback_provider_names)
-        message = f"Full {elements} system from OPTIMADE with local fallback for {fallbacks}"
+    if message is None and fallback_trigger is not None:
+        trigger_provider, _ = fallback_trigger
+        message = (
+            f"Full {elements} system from direct database clients; all providers "
+            f"loaded locally after OPTIMADE fallback was triggered by {trigger_provider}"
+        )
     message = message or f"Full {elements} system from OPTIMADE"
     return df2ds(df, message=message)
 
@@ -233,6 +249,44 @@ def _load_from_optimade_fallback_provider(elements, provider_name: str, err: Run
     return dataset
 
 
+def _load_all_providers_locally(elements, provider_names, trigger_provider: str, err: RuntimeError):
+    """Load one compatible total-energy dataset when any OPTIMADE provider fails.
+
+    OPTIMADE exposes formation energies for these providers, while the direct
+    loaders expose absolute total energies. Mixing the two conventions in one
+    phase diagram silently removes valid entries, so fallback must be atomic
+    across the complete provider set.
+    """
+    provider_names = list(provider_names)
+    if len(provider_names) == 1:
+        provider_name = provider_names[0]
+        return [
+            _load_from_optimade_fallback_provider(
+                elements,
+                provider_name,
+                err,
+                message=f"Full {elements} system from OPTIMADE provider {provider_name}",
+            )
+        ]
+
+    _warn_all_local_fallback(trigger_provider, err)
+    datasets = []
+    for provider_name in provider_names:
+        loader, label, loader_kwargs = _optimade_fallback_loader(provider_name)
+        provider_reason = err if provider_name == trigger_provider else RuntimeError(
+            f"Direct {label} loader selected to keep a consistent total-energy basis "
+            f"after OPTIMADE provider '{trigger_provider}' required fallback"
+        )
+        fallback_message = (
+            f"Full {elements} system from direct {label} loader; consistent local "
+            f"fallback triggered by OPTIMADE provider {trigger_provider}"
+        )
+        dataset = loader(elements, message=fallback_message, **loader_kwargs)
+        _mark_optimade_fallback(dataset, provider_name, label, provider_reason)
+        datasets.append(dataset)
+    return datasets
+
+
 def _optimade_fallback_loader(provider_name: str):
     if provider_name == "materials_project":
         return load_from_materials_project, "Materials Project", {}
@@ -249,6 +303,19 @@ def _warn_optimade_fallback(provider_name: str, fallback_label: str, err: Except
         f"{_RED}{banner}\n"
         f"WARNING: OPTIMADE provider '{provider_name}' is unavailable; "
         f"falling back to local {fallback_label} loader.\n"
+        f"Reason: {err}\n"
+        f"{banner}{_RESET}",
+        file=sys.stderr,
+    )
+
+
+def _warn_all_local_fallback(provider_name: str, err: Exception):
+    banner = "!" * 88
+    print(
+        f"{_RED}{banner}\n"
+        f"WARNING: OPTIMADE provider '{provider_name}' is unavailable or empty; "
+        f"loading every provider through its direct client to preserve one "
+        f"total-energy basis.\n"
         f"Reason: {err}\n"
         f"{banner}{_RESET}",
         file=sys.stderr,

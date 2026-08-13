@@ -55,6 +55,12 @@ class _FakeDataset:
     def __len__(self):
         return len(self.entries)
 
+    def filter(self, predicate):
+        return _FakeDataset(entry for entry in self.entries if predicate(entry))
+
+    def merge(self, other):
+        return _FakeDataset([*self.entries, *other.entries])
+
 
 class yaml_csv_poscars_Test(unittest.TestCase):
 
@@ -84,6 +90,32 @@ class yaml_csv_poscars_Test(unittest.TestCase):
             PATH_WITH_TESTS / "table.txt",
             PATH_WITH_TESTS / "table2.txt",
         )
+
+    def test_default_sources_are_hull_filtered_independently(self):
+        datasets = {
+            "al": _FakeDataset([_FakeEntry("al1")]),
+            "oq": _FakeDataset([_FakeEntry("oq1")]),
+            "ma": _FakeDataset([_FakeEntry("mp1")]),
+        }
+        loaders = {name: Mock(return_value=dataset) for name, dataset in datasets.items()}
+        loaders["op"] = Mock(side_effect=RuntimeError("optimade unavailable"))
+
+        with TemporaryDirectory() as tmpdir, \
+                patch.object(poll_databases_module, "LOADERS", loaders), \
+                patch.object(poll_databases_module, "load_from_optimade", loaders["op"]), \
+                patch.object(poll_databases_module, "PhaseDiagramTools") as phase_diagram_tools, \
+                patch.object(poll_databases_module, "write"):
+            phase_diagram_tools.return_value.height_above_hull_pa.return_value = 0.0
+            ds = poll_databases(
+                {"Si"},
+                do_deduplication=False,
+                cache_root_path=Path(tmpdir),
+            )
+
+        self.assertEqual(phase_diagram_tools.call_count, 3)
+        self.assertEqual({entry.id for entry in ds}, {"al1", "oq1", "mp1"})
+        self.assertEqual(ds.metadata["database_names"], ["alexandria", "oqmd", "MatProj"])
+        self.assertEqual(ds.metadata["preferred_database"], "al")
 
     def test_poll_databases_accepts_optimade_source(self):
         optimade_loader = Mock(return_value=_FakeDataset([_FakeEntry("op1")]))

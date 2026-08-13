@@ -39,6 +39,7 @@ TOOLKIT_DICT: Dict[str, Any] = {
 
 KNOWN_MODELS = {"mattersim": mattersim_bridge, "grace": grace_bridge}
 MAX_EHULL_PA = 0.1
+POLL_DB_OPERATION_CACHE_SCHEMA_VERSION = 2
 LOG = logging.getLogger(__name__)
 
 
@@ -465,7 +466,11 @@ def _normalize_cache_payload(obj: Any):
 def _poll_db_cache_dir(elements: Iterable[str], params: Dict[str, Any]) -> Path:
     normalized_elements = sorted(str(el) for el in elements)
     normalized_params = _normalize_cache_payload(params)
-    payload = {"elements": normalized_elements, "params": normalized_params}
+    payload = {
+        "cache_schema_version": POLL_DB_OPERATION_CACHE_SCHEMA_VERSION,
+        "elements": normalized_elements,
+        "params": normalized_params,
+    }
     digest = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
     ).hexdigest()[:16]
