@@ -6,11 +6,31 @@ VSBTOOLS_REF="${VSBTOOLS_REF:-}"
 SCOUT_MATTER_REF="${SCOUT_MATTER_REF:-}"
 PYTHON_BIN="${PYTHON_BIN:-}"
 MANAGED_PYTHON_VERSION="${MANAGED_PYTHON_VERSION:-3.11}"
-PYTORCH_VERSION="${PYTORCH_VERSION:-2.2.1+cu118}"
-TORCHVISION_VERSION="${TORCHVISION_VERSION:-0.17.1+cu118}"
-TORCHAUDIO_VERSION="${TORCHAUDIO_VERSION:-2.2.1+cu118}"
-PYTORCH_CUDA_INDEX_URL="${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu118}"
-PYG_WHEEL_URL="${PYG_WHEEL_URL:-https://data.pyg.org/whl/torch-2.2.1+cu118.html}"
+PYTORCH_VERSION="${PYTORCH_VERSION:-}"
+TORCHVISION_VERSION="${TORCHVISION_VERSION:-}"
+TORCHAUDIO_VERSION="${TORCHAUDIO_VERSION:-}"
+PYTORCH_CUDA_INDEX_URL="${PYTORCH_CUDA_INDEX_URL:-}"
+PYG_WHEEL_URL="${PYG_WHEEL_URL:-}"
+HOST_OS="$(uname -s)"
+case "$HOST_OS" in
+    Darwin*)
+        PYTORCH_VERSION="${PYTORCH_VERSION:-2.4.1}"
+        TORCHVISION_VERSION="${TORCHVISION_VERSION:-0.19.1}"
+        TORCHAUDIO_VERSION="${TORCHAUDIO_VERSION:-2.4.1}"
+        PYG_WHEEL_URL="${PYG_WHEEL_URL:-https://data.pyg.org/whl/torch-2.4.0+cpu.html}"
+        ;;
+    Linux*|MINGW*|MSYS*|CYGWIN*)
+        PYTORCH_VERSION="${PYTORCH_VERSION:-2.2.1+cu118}"
+        TORCHVISION_VERSION="${TORCHVISION_VERSION:-0.17.1+cu118}"
+        TORCHAUDIO_VERSION="${TORCHAUDIO_VERSION:-2.2.1+cu118}"
+        PYTORCH_CUDA_INDEX_URL="${PYTORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu118}"
+        PYG_WHEEL_URL="${PYG_WHEEL_URL:-https://data.pyg.org/whl/torch-2.2.1+cu118.html}"
+        ;;
+    *)
+        echo "Unsupported operating system for reproducibility setup: $HOST_OS" >&2
+        exit 1
+        ;;
+esac
 ROOT="${VSBTOOLS_REPRO_ROOT:-$PWD/vsbtools_reproducibility_env}"
 RUN_ROOT="${VSBTOOLS_REPRO_RUN_ROOT:-$PWD/vsbtools_reproducibility_run}"
 EXISTING_VSBTOOLS_VENV=""
@@ -54,11 +74,11 @@ Environment overrides:
   SCOUT_MATTER_REF          Default: repository default branch
   PYTHON_BIN                Python used to create venvs
   MANAGED_PYTHON_VERSION    Default: 3.11
-  PYTORCH_VERSION           Default: 2.2.1+cu118
-  TORCHVISION_VERSION       Default: 0.17.1+cu118
-  TORCHAUDIO_VERSION        Default: 2.2.1+cu118
-  PYTORCH_CUDA_INDEX_URL    Default: https://download.pytorch.org/whl/cu118
-  PYG_WHEEL_URL             Default: https://data.pyg.org/whl/torch-2.2.1+cu118.html
+  PYTORCH_VERSION           Linux/Windows: 2.2.1+cu118; macOS: 2.4.1
+  TORCHVISION_VERSION       Linux/Windows: 0.17.1+cu118; macOS: 0.19.1
+  TORCHAUDIO_VERSION        Linux/Windows: 2.2.1+cu118; macOS: 2.4.1
+  PYTORCH_CUDA_INDEX_URL    Linux/Windows default: https://download.pytorch.org/whl/cu118
+  PYG_WHEEL_URL             Linux/Windows: torch-2.2.1+cu118; macOS: torch-2.4.0+cpu
   VSBTOOLS_REPRO_ROOT       Default: ./vsbtools_reproducibility_env
   VSBTOOLS_REPRO_RUN_ROOT   Default: ./vsbtools_reproducibility_run
 All Jupyter, IPython, matplotlib, pip, and vsbtools external-path state is kept
@@ -224,7 +244,7 @@ select_python_bin() {
 check_python_version() {
     if ! is_compatible_python "$PYTHON_BIN"; then
         echo "Selected Python is not compatible: $PYTHON_BIN ($(python_version_label "$PYTHON_BIN"))" >&2
-        echo "The reproducibility venvs need Python 3.9-3.11 because scout-matter pins torch==2.2.1+cu118." >&2
+        echo "The reproducibility venvs need Python 3.9-3.11 for the selected scout-matter dependencies." >&2
         exit 1
     fi
 }
@@ -366,7 +386,11 @@ else
     make_venv "$SCOUT_VENV"
     SCOUT_PYTHON="$(venv_python "$SCOUT_VENV")"
     log "Installing scout-matter PyTorch/PyG binary dependencies"
-    "$SCOUT_PYTHON" -m pip install --extra-index-url "$PYTORCH_CUDA_INDEX_URL" \
+    PYTORCH_INDEX_ARGS=()
+    if [[ -n "$PYTORCH_CUDA_INDEX_URL" ]]; then
+        PYTORCH_INDEX_ARGS=(--extra-index-url "$PYTORCH_CUDA_INDEX_URL")
+    fi
+    "$SCOUT_PYTHON" -m pip install "${PYTORCH_INDEX_ARGS[@]}" \
         "torch==$PYTORCH_VERSION" \
         "torchvision==$TORCHVISION_VERSION" \
         "torchaudio==$TORCHAUDIO_VERSION"
@@ -374,9 +398,12 @@ else
         torch_sparse \
         torch_cluster \
         torch_spline_conv)
-    case "$(uname -s)" in
+    case "$HOST_OS" in
+        Darwin*)
+            log "macOS detected; installing the universal2 PyG extensions required by scout-matter"
+            ;;
         MINGW*|MSYS*|CYGWIN*)
-            log "Windows detected; skipping pyg_lib because no compatible wheel is available"
+            log "Windows detected; installing the PyG extensions available for Windows"
             ;;
         *)
             PYG_PACKAGES=(pyg_lib "${PYG_PACKAGES[@]}")
@@ -386,9 +413,9 @@ else
         "${PYG_PACKAGES[@]}"
 
     log "Installing scout-matter into its contained venv"
-    if ! "$SCOUT_PYTHON" -m pip install --extra-index-url "$PYTORCH_CUDA_INDEX_URL" --find-links "$PYG_WHEEL_URL" "$SCOUT_SRC"; then
+    if ! "$SCOUT_PYTHON" -m pip install "${PYTORCH_INDEX_ARGS[@]}" --find-links "$PYG_WHEEL_URL" "$SCOUT_SRC"; then
         log "Non-editable scout-matter install failed; trying editable install"
-        "$SCOUT_PYTHON" -m pip install --extra-index-url "$PYTORCH_CUDA_INDEX_URL" --find-links "$PYG_WHEEL_URL" -e "$SCOUT_SRC"
+        "$SCOUT_PYTHON" -m pip install "${PYTORCH_INDEX_ARGS[@]}" --find-links "$PYG_WHEEL_URL" -e "$SCOUT_SRC"
     fi
     "$SCOUT_PYTHON" - <<'PY'
 import mattergen
@@ -538,6 +565,7 @@ cat > "$SETUP_MANIFEST" <<EOF
   "scout_matter_commit": "$SCOUT_MATTER_COMMIT",
   "root": "$ROOT",
   "run_root": "$RUN_ROOT",
+  "host_os": "$HOST_OS",
   "reproducibility_python": "$PYTHON_BIN",
   "managed_python_version": "$MANAGED_PYTHON_VERSION",
   "pytorch_version": "$PYTORCH_VERSION",
