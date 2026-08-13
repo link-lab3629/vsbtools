@@ -1,0 +1,103 @@
+name: macOS reproducibility setup
+
+on:
+  push:
+    paths:
+      - ".github/workflows/macos-reproducibility.yml"
+      - "pyproject.toml"
+      - "vsbtools/materials_dataset/Examples/setup_reproducibility_envs.sh"
+      - "vsbtools/materials_dataset/Examples/mg_generation_postprocessing_pipeline.ipynb"
+      - "vsbtools/materials_dataset/analysis/scenario_pipeline.py"
+      - "vsbtools/materials_dataset/energy_estimation/**"
+  pull_request:
+    paths:
+      - ".github/workflows/macos-reproducibility.yml"
+      - "pyproject.toml"
+      - "vsbtools/materials_dataset/Examples/setup_reproducibility_envs.sh"
+      - "vsbtools/materials_dataset/Examples/mg_generation_postprocessing_pipeline.ipynb"
+      - "vsbtools/materials_dataset/analysis/scenario_pipeline.py"
+      - "vsbtools/materials_dataset/energy_estimation/**"
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-reproducibility-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  setup:
+    name: Apple Silicon / Python 3.11
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Report runner platform
+        run: |
+          uname -a
+          arch
+          /bin/bash --version | head -1
+          python3.11 --version
+
+      - name: Cache reproducibility downloads
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vsbtools-reproducibility/state/pip_cache
+          key: macos-reproducibility-${{ runner.arch }}-py311-${{ hashFiles('pyproject.toml', 'vsbtools/materials_dataset/Examples/setup_reproducibility_envs.sh') }}
+          restore-keys: |
+            macos-reproducibility-${{ runner.arch }}-py311-
+
+      - name: Install and validate reproducibility environments
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+          VSBTOOLS_REPO_URL: ${{ github.workspace }}
+          VSBTOOLS_REF: ${{ github.sha }}
+        run: |
+          /bin/bash vsbtools/materials_dataset/Examples/setup_reproducibility_envs.sh \
+            --root "${RUNNER_TEMP}/vsbtools-reproducibility" \
+            --run-root "${RUNNER_TEMP}/vsbtools-reproducibility-run" \
+            --python "$(command -v python3.11)" \
+            --no-launch
+
+      - name: Report installed native dependency versions
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          repro_root="${RUNNER_TEMP}/vsbtools-reproducibility"
+          scout_python="${repro_root}/venvs/scout-matter/bin/python"
+          vsbtools_python="${repro_root}/venvs/vsbtools/bin/python"
+
+          for python in "$scout_python" "$vsbtools_python"; do
+            if [[ ! -x "$python" ]]; then
+              echo "Missing environment Python: $python"
+              continue
+            fi
+            echo "Python executable: $python"
+            file "$python"
+            "$python" --version
+            "$python" -m pip list | grep -E \
+              '^(numpy|pyg-lib|torch|torchaudio|torchvision|torch-cluster|torch-geometric|torch-scatter|torch-sparse|torch-spline-conv)[[:space:]]' \
+              || true
+          done
+
+          if [[ -x "$scout_python" ]]; then
+            "$scout_python" -X faulthandler -c \
+              'import torch; print("torch", torch.__version__, "mps", torch.backends.mps.is_available())'
+            "$scout_python" -X faulthandler -c \
+              'import torch_scatter, torch_sparse, torch_cluster; print("PyG native extensions import OK")'
+            "$scout_python" -X faulthandler -c \
+              'import mattergen.common.data.chemgraph; import mattergen.diffusion.diffusion_loss; print("MatterGen bridge imports OK")'
+          fi
