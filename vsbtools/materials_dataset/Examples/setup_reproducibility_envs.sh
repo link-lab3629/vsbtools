@@ -320,6 +320,16 @@ print(sysconfig.get_paths()["purelib"])
 PY
 }
 
+pip_install_with_pytorch_index() {
+    local python="$1"
+    shift
+    if [[ -n "$PYTORCH_CUDA_INDEX_URL" ]]; then
+        "$python" -m pip install --extra-index-url "$PYTORCH_CUDA_INDEX_URL" "$@"
+    else
+        "$python" -m pip install "$@"
+    fi
+}
+
 ROOT="$(mkdir -p "$ROOT" && cd "$ROOT" && pwd)"
 RUN_ROOT="$(mkdir -p "$RUN_ROOT" && cd "$RUN_ROOT" && pwd)"
 
@@ -386,11 +396,7 @@ else
     make_venv "$SCOUT_VENV"
     SCOUT_PYTHON="$(venv_python "$SCOUT_VENV")"
     log "Installing scout-matter PyTorch/PyG binary dependencies"
-    PYTORCH_INDEX_ARGS=()
-    if [[ -n "$PYTORCH_CUDA_INDEX_URL" ]]; then
-        PYTORCH_INDEX_ARGS=(--extra-index-url "$PYTORCH_CUDA_INDEX_URL")
-    fi
-    "$SCOUT_PYTHON" -m pip install "${PYTORCH_INDEX_ARGS[@]}" \
+    pip_install_with_pytorch_index "$SCOUT_PYTHON" \
         "torch==$PYTORCH_VERSION" \
         "torchvision==$TORCHVISION_VERSION" \
         "torchaudio==$TORCHAUDIO_VERSION"
@@ -413,9 +419,9 @@ else
         "${PYG_PACKAGES[@]}"
 
     log "Installing scout-matter into its contained venv"
-    if ! "$SCOUT_PYTHON" -m pip install "${PYTORCH_INDEX_ARGS[@]}" --find-links "$PYG_WHEEL_URL" "$SCOUT_SRC"; then
+    if ! pip_install_with_pytorch_index "$SCOUT_PYTHON" --find-links "$PYG_WHEEL_URL" "$SCOUT_SRC"; then
         log "Non-editable scout-matter install failed; trying editable install"
-        "$SCOUT_PYTHON" -m pip install "${PYTORCH_INDEX_ARGS[@]}" --find-links "$PYG_WHEEL_URL" -e "$SCOUT_SRC"
+        pip_install_with_pytorch_index "$SCOUT_PYTHON" --find-links "$PYG_WHEEL_URL" -e "$SCOUT_SRC"
     fi
     "$SCOUT_PYTHON" - <<'PY'
 import mattergen
