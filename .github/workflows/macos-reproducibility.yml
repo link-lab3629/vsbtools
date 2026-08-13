@@ -94,6 +94,9 @@ jobs:
           done
 
           if [[ -x "$scout_python" ]]; then
+            # Monty 2024 mistakes dependencies imported from a checkout for
+            # pymatgen's own CI and raises on expired deprecation deadlines.
+            unset CI
             "$scout_python" -X faulthandler -c \
               'import torch; print("torch", torch.__version__, "mps", torch.backends.mps.is_available())'
             "$scout_python" -X faulthandler -c \
@@ -101,3 +104,4 @@ jobs:
             "$scout_python" -X faulthandler -c \
               'import mattergen.common.data.chemgraph; import mattergen.diffusion.diffusion_loss; print("MatterGen bridge imports OK")'
           fi
+          exit 0

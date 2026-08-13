@@ -463,34 +463,39 @@ else
         prettytable \
         pymatgen \
         PyYAML \
-        scipy \
-        torch
-    if "$VSBTOOLS_PYTHON" -m pip install mysqlclient; then
-        log "Optional mysqlclient dependency installed"
-    else
-        log "Optional mysqlclient dependency failed to install; continuing because this notebook does not use local OQMD/MySQL"
-    fi
+        scipy
+    # The bridge loads scout-matter's compiled PyG extensions into this
+    # interpreter, so its PyTorch ABI must exactly match the scout environment.
+    pip_install_with_pytorch_index "$VSBTOOLS_PYTHON" "torch==$PYTORCH_VERSION"
+    log "Skipping optional mysqlclient because the reproducibility notebook does not use local OQMD/MySQL"
 fi
 
 export MATTERGEN_PYTHON_PATH="$SCOUT_SITE_PACKAGES"
 export GRACE_PYTHON="$GRACE_PYTHON_BIN"
 
 log "Validating bridge imports from the vsbtools venv"
-"$VSBTOOLS_PYTHON" - <<'PY'
+# Monty 2024 can mistake a dependency imported from another checkout for
+# pymatgen's own CI and raise on expired deprecation deadlines.
+(
+    unset CI
+    "$VSBTOOLS_PYTHON" - <<'PY'
 import os
 import sys
 from pathlib import Path
 
 sys.path.append(os.environ["MATTERGEN_PYTHON_PATH"])
+import torch
 import mattergen.common.data.chemgraph
 import mattergen.diffusion.diffusion_loss
 
 import vsbtools
 import vsbtools.materials_dataset
 print("vsbtools:", Path(vsbtools.__file__).resolve())
+print("Bridge PyTorch:", torch.__version__)
 print("MATTERGEN_PYTHON_PATH:", os.environ["MATTERGEN_PYTHON_PATH"])
 print("GRACE_PYTHON:", os.environ["GRACE_PYTHON"])
 PY
+)
 
 NOTEBOOK_SRC="$VSBTOOLS_SRC/vsbtools/materials_dataset/Examples/mg_generation_postprocessing_pipeline.ipynb"
 if [[ ! -f "$NOTEBOOK_SRC" && -f "$SCRIPT_DIR/mg_generation_postprocessing_pipeline.ipynb" ]]; then
