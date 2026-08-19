@@ -10,13 +10,19 @@ from pathlib import Path
 import yaml
 from pymatgen.core import Structure
 from ..crystal_dataset import CrystalDataset, CrystalEntry
+from .mattergen_tools.parsers import SafeLoaderWithNone
+
+
+def _safe_load(raw):
+    return yaml.load(raw, Loader=SafeLoaderWithNone)
+
 
 def load_yaml_recursively(yaml_fname=None, raw=None, ym_dict=None):
     if yaml_fname is not None:
         with open(yaml_fname) as ym_fid:
             raw = ym_fid.read()
     if raw is not None:
-        ym_dict = yaml.safe_load(raw)
+        ym_dict = _safe_load(raw)
     if ym_dict is None:
         return None
 
@@ -27,7 +33,7 @@ def load_yaml_recursively(yaml_fname=None, raw=None, ym_dict=None):
     for k, v in list(ym_dict.items()):
         if isinstance(v, str) and k not in ['message']:
             try:
-                loaded = yaml.safe_load(v)
+                loaded = _safe_load(v)
             except yaml.YAMLError:
                 continue
             if isinstance(loaded, dict):

@@ -49,3 +49,10 @@ class yaml_csv_poscars_Test(unittest.TestCase):
             meta_dict["metadata"]["batch_metadata"]["guidance"],
             {"environment": {"mode": "huber", "B-Fe": 3}},
         )
+
+    def test_recursive_yaml_read_parses_python_none_in_nested_metadata(self):
+        meta_dict = load_yaml_recursively(
+            raw="metadata:\n  batch_metadata: |\n    guidance: None\n"
+        )
+
+        self.assertIsNone(meta_dict["metadata"]["batch_metadata"]["guidance"])
