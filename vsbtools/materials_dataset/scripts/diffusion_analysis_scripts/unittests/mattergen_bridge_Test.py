@@ -1,7 +1,11 @@
 import copy
 import importlib
+import os
+import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import torch
@@ -16,6 +20,42 @@ FIXTURES_ROOT = Path(__file__).resolve().parents[3] / "unittests_datasets"
 ZIPPED_PROCESSED_PATH = (
     FIXTURES_ROOT / "MG_postprocess_pipelines" / "PROCESSED"
 )
+
+
+class MattergenPathConfiguration_Test(unittest.TestCase):
+    def test_editable_environment_source_and_dependencies_are_added(self):
+        previous_mgen_path = mattergen_bridge.mgen_path
+        previous_sys_path = list(sys.path)
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = Path(tmp_dir)
+                source_root = tmp_path / "scout-matter"
+                dependency_root = tmp_path / "site-packages"
+                for relative_path in (
+                    Path("mattergen/common/data/chemgraph.py"),
+                    Path("mattergen/diffusion/diffusion_loss.py"),
+                ):
+                    path = source_root / relative_path
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.touch()
+                dependency_root.mkdir()
+
+                with patch.dict(
+                    os.environ,
+                    {
+                        "MATTERGEN_PYTHON_PATH": source_root.as_posix(),
+                        "SCOUT_MATTER_SITE_PACKAGES": dependency_root.as_posix(),
+                    },
+                ):
+                    mattergen_bridge.mgen_path = None
+                    resolved = mattergen_bridge._configure_mattergen_path(prompt=False)
+
+                self.assertEqual(resolved, source_root)
+                self.assertIn(source_root.as_posix(), sys.path)
+                self.assertIn(dependency_root.as_posix(), sys.path)
+        finally:
+            mattergen_bridge.mgen_path = previous_mgen_path
+            sys.path[:] = previous_sys_path
 
 
 class MattergenBridge_Test(unittest.TestCase):

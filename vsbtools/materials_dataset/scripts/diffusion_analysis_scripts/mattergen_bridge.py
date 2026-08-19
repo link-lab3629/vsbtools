@@ -1,4 +1,5 @@
 import copy
+import os
 import sys
 import types
 from pathlib import Path
@@ -76,6 +77,15 @@ def _configure_mattergen_path(*, prompt: bool) -> Path | None:
     )
     if resolved_path is not None:
         add_sys_path(resolved_path, prepend=False)
+        scout_site_packages = os.environ.get("SCOUT_MATTER_SITE_PACKAGES")
+        if scout_site_packages:
+            dependency_path = Path(scout_site_packages).expanduser()
+            if not dependency_path.is_dir():
+                raise FileNotFoundError(
+                    "SCOUT_MATTER_SITE_PACKAGES is not a directory: "
+                    f"{dependency_path}"
+                )
+            add_sys_path(dependency_path, prepend=False)
         mgen_path = resolved_path
     return resolved_path
 

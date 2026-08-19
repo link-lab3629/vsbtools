@@ -60,7 +60,8 @@ Creates a contained reproducibility workspace with three virtual environments:
 Options:
   --root PATH               Environment workspace root. Default: ./vsbtools_reproducibility_env
   --run-root PATH           Reproducibility output root. Default: ./vsbtools_reproducibility_run
-  --python PATH             Python used to create venvs. Default: compatible local Python, otherwise managed Python 3.11
+  --python PATH             Python used to create venvs. Default: reused vsbtools/scout Python,
+                            compatible local Python, or managed Python 3.11
   --vsbtools-ref REF        Git ref for vsbtools. Default: repository default branch
   --scout-matter-ref REF    Git ref for scout-matter. Default: repository default branch
   --no-launch               Install/configure only; do not launch JupyterLab
@@ -72,7 +73,7 @@ Environment overrides:
   SCOUT_MATTER_REPO_URL     Default: https://github.com/link-lab3629/scout-matter.git
   VSBTOOLS_REF              Default: repository default branch
   SCOUT_MATTER_REF          Default: repository default branch
-  PYTHON_BIN                Python used to create venvs
+  PYTHON_BIN                Python used to create venvs; defaults to a reused vsbtools/scout Python when supplied
   MANAGED_PYTHON_VERSION    Default: 3.11
   PYTORCH_VERSION           Linux/Windows: 2.2.1+cu118; macOS: 2.4.1
   TORCHVISION_VERSION       Linux/Windows: 0.17.1+cu118; macOS: 0.19.1
@@ -162,6 +163,31 @@ python_version_label() {
     "$1" - <<'PY'
 import sys
 print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+PY
+}
+
+python_abi_label() {
+    "$1" - <<'PY'
+import sys
+print(f"{sys.version_info.major}.{sys.version_info.minor}")
+PY
+}
+
+torch_version_label() {
+    PYTHONWARNINGS=ignore "$1" - <<'PY'
+import torch
+print(torch.__version__)
+PY
+}
+
+mattergen_import_root() {
+    "$1" - <<'PY'
+from pathlib import Path
+
+import mattergen
+
+package_dir = Path(mattergen.__file__).resolve().parent
+print(package_dir.parent)
 PY
 }
 
@@ -364,6 +390,19 @@ EXISTING_VSBTOOLS_VENV="$(prompt_existing_venv "vsbtools/Jupyter")"
 EXISTING_SCOUT_VENV="$(prompt_existing_venv "scout-matter/MatterGen")"
 EXISTING_GRACE_VENV="$(prompt_existing_venv "GRACE/tensorpotential")"
 
+# MatterGen is imported in the vsbtools kernel, including dependencies from the
+# scout-matter venv. When one side is reused, create the other side with the
+# reused interpreter so Python-extension modules remain ABI-compatible.
+if [[ -z "$PYTHON_BIN" ]]; then
+    if [[ -n "$EXISTING_VSBTOOLS_VENV" ]]; then
+        PYTHON_BIN="$(venv_python "$EXISTING_VSBTOOLS_VENV")"
+        log "Using the existing vsbtools venv Python to create missing environments"
+    elif [[ -n "$EXISTING_SCOUT_VENV" ]]; then
+        PYTHON_BIN="$(venv_python "$EXISTING_SCOUT_VENV")"
+        log "Using the existing scout-matter venv Python to create missing environments"
+    fi
+fi
+
 select_python_bin
 check_python_version
 
@@ -392,6 +431,17 @@ GRACE_PYTHON_BIN="$(venv_python "$GRACE_VENV")"
 
 if [[ -n "$EXISTING_SCOUT_VENV" ]]; then
     log "Reusing scout-matter venv $SCOUT_VENV"
+    SCOUT_INSTALLED_TORCH_VERSION="$(torch_version_label "$SCOUT_PYTHON")"
+    if [[ -z "$EXISTING_VSBTOOLS_VENV" && "$PYTORCH_VERSION" != "$SCOUT_INSTALLED_TORCH_VERSION" ]]; then
+        log "Matching the vsbtools bridge to scout-matter PyTorch $SCOUT_INSTALLED_TORCH_VERSION"
+        PYTORCH_VERSION="$SCOUT_INSTALLED_TORCH_VERSION"
+        case "$PYTORCH_VERSION" in
+            *+cu*)
+                PYTORCH_CUDA_TAG="${PYTORCH_VERSION##*+}"
+                PYTORCH_CUDA_INDEX_URL="https://download.pytorch.org/whl/$PYTORCH_CUDA_TAG"
+                ;;
+        esac
+    fi
 else
     make_venv "$SCOUT_VENV"
     SCOUT_PYTHON="$(venv_python "$SCOUT_VENV")"
@@ -429,6 +479,12 @@ print("mattergen:", mattergen.__file__)
 PY
 fi
 SCOUT_SITE_PACKAGES="$(python_site_packages "$SCOUT_PYTHON")"
+MATTERGEN_PYTHON_PATH="$(mattergen_import_root "$SCOUT_PYTHON")"
+if [[ ! -f "$MATTERGEN_PYTHON_PATH/mattergen/common/data/chemgraph.py" || \
+      ! -f "$MATTERGEN_PYTHON_PATH/mattergen/diffusion/diffusion_loss.py" ]]; then
+    echo "Could not resolve the MatterGen import root from $SCOUT_PYTHON: $MATTERGEN_PYTHON_PATH" >&2
+    exit 1
+fi
 
 if [[ -n "$EXISTING_GRACE_VENV" ]]; then
     log "Reusing GRACE/tensorpotential venv $GRACE_VENV"
@@ -470,7 +526,32 @@ else
     log "Skipping optional mysqlclient because the reproducibility notebook does not use local OQMD/MySQL"
 fi
 
-export MATTERGEN_PYTHON_PATH="$SCOUT_SITE_PACKAGES"
+VSBTOOLS_PYTHON_ABI="$(python_abi_label "$VSBTOOLS_PYTHON")"
+SCOUT_PYTHON_ABI="$(python_abi_label "$SCOUT_PYTHON")"
+if [[ "$VSBTOOLS_PYTHON_ABI" != "$SCOUT_PYTHON_ABI" ]]; then
+    cat >&2 <<EOF
+The vsbtools and scout-matter environments must use the same Python major/minor version.
+  vsbtools:     $VSBTOOLS_PYTHON_ABI ($VSBTOOLS_PYTHON)
+  scout-matter: $SCOUT_PYTHON_ABI ($SCOUT_PYTHON)
+Rerun with --force and reuse only the scout-matter environment, or provide matching environments.
+EOF
+    exit 1
+fi
+
+VSBTOOLS_TORCH_VERSION="$(torch_version_label "$VSBTOOLS_PYTHON")"
+SCOUT_TORCH_VERSION="$(torch_version_label "$SCOUT_PYTHON")"
+if [[ "$VSBTOOLS_TORCH_VERSION" != "$SCOUT_TORCH_VERSION" ]]; then
+    cat >&2 <<EOF
+The vsbtools and scout-matter environments must use the same PyTorch version.
+  vsbtools:     $VSBTOOLS_TORCH_VERSION ($VSBTOOLS_PYTHON)
+  scout-matter: $SCOUT_TORCH_VERSION ($SCOUT_PYTHON)
+Create one of these environments through this installer, or provide environments with matching PyTorch versions.
+EOF
+    exit 1
+fi
+
+export MATTERGEN_PYTHON_PATH
+export SCOUT_MATTER_SITE_PACKAGES="$SCOUT_SITE_PACKAGES"
 export GRACE_PYTHON="$GRACE_PYTHON_BIN"
 
 log "Validating bridge imports from the vsbtools venv"
@@ -484,6 +565,9 @@ import sys
 from pathlib import Path
 
 sys.path.append(os.environ["MATTERGEN_PYTHON_PATH"])
+scout_site_packages = os.environ.get("SCOUT_MATTER_SITE_PACKAGES")
+if scout_site_packages and scout_site_packages not in sys.path:
+    sys.path.append(scout_site_packages)
 import torch
 import mattergen.common.data.chemgraph
 import mattergen.diffusion.diffusion_loss
@@ -493,6 +577,7 @@ import vsbtools.materials_dataset
 print("vsbtools:", Path(vsbtools.__file__).resolve())
 print("Bridge PyTorch:", torch.__version__)
 print("MATTERGEN_PYTHON_PATH:", os.environ["MATTERGEN_PYTHON_PATH"])
+print("SCOUT_MATTER_SITE_PACKAGES:", os.environ["SCOUT_MATTER_SITE_PACKAGES"])
 print("GRACE_PYTHON:", os.environ["GRACE_PYTHON"])
 PY
 )
@@ -550,6 +635,7 @@ export GRACE_VENV="$GRACE_VENV"
 export VSBTOOLS_PYTHON="$VSBTOOLS_PYTHON"
 export SCOUT_PYTHON="$SCOUT_PYTHON"
 export MATTERGEN_PYTHON_PATH="$MATTERGEN_PYTHON_PATH"
+export SCOUT_MATTER_SITE_PACKAGES="$SCOUT_SITE_PACKAGES"
 export GRACE_PYTHON="$GRACE_PYTHON"
 export PATH="$(dirname "$VSBTOOLS_PYTHON"):\$PATH"
 export XDG_CONFIG_HOME="$XDG_CONFIG_HOME"
@@ -588,6 +674,7 @@ cat > "$SETUP_MANIFEST" <<EOF
   "scout_matter_venv": "$SCOUT_VENV",
   "grace_venv": "$GRACE_VENV",
   "mattergen_python_path": "$MATTERGEN_PYTHON_PATH",
+  "scout_matter_site_packages": "$SCOUT_SITE_PACKAGES",
   "grace_python": "$GRACE_PYTHON"
 }
 EOF

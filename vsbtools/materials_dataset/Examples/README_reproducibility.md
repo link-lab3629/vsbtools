@@ -41,15 +41,30 @@ explicitly. In an interactive terminal it asks whether to reuse existing virtual
 environments for `vsbtools`, `scout-matter`, and GRACE. Press Enter at a prompt
 to create that environment under `./vsbtools_reproducibility_env`.
 
+Both MatterGen setup modes are supported:
+
+- Press Enter at the `scout-matter/MatterGen` prompt to create and install a
+  contained environment.
+- Enter an existing venv root to reuse either a regular or editable MatterGen
+  installation. The installer resolves the actual MatterGen source/import root
+  and exposes that venv's dependencies inside the reproducibility launcher.
+
+The `vsbtools` and MatterGen environments share MatterGen Python packages in one
+kernel, so they must use the same Python major/minor and PyTorch versions. If one
+is reused and the other is created, the installer automatically uses the reused
+environment's Python. If both are reused, the installer validates their Python
+and PyTorch versions before launching. GRACE runs through its own Python
+subprocess and may use a different version.
+
 `scout-matter` currently pins a CUDA PyTorch wheel (`torch==2.2.1+cu118`), so
 the setup script uses the PyTorch CUDA wheel index for that environment. It also
 preinstalls matching PyTorch Geometric binary wheels for packages such as
 `torch_cluster`, because those packages can fail if pip tries to build them from
 source before `torch` is importable. The reproducibility virtual environments use
-Python 3.9-3.11. If a compatible local Python is available, the script uses it.
-Otherwise, for example on a system where `python3` is Python 3.12, the script
-bootstraps `uv` and installs a managed Python 3.11 under `state/` inside the
-contained workspace.
+Python 3.9-3.11. After considering any reused environment, the script uses a
+compatible local Python when available. Otherwise, for example on a system where
+`python3` is Python 3.12, it bootstraps `uv` and installs a managed Python 3.11
+under `state/` inside the contained workspace.
 
 With no existing venvs supplied, the script creates the environment workspace
 under `./vsbtools_reproducibility_env`:
@@ -152,6 +167,10 @@ GRACE_ENV_OR_PYTHON = Path("/path/to/grace-venv-or-bin-python")
 - a `scout-matter` virtual environment root,
 - that virtual environment's Python executable,
 - or an import root/site-packages directory containing `mattergen`.
+
+For a MatterGen venv, the notebook resolves editable installs to their source
+tree and separately exposes the venv's site-packages dependencies, matching the
+behavior of the contained setup script.
 
 `GRACE_ENV_OR_PYTHON` may point to:
 

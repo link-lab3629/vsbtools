@@ -112,7 +112,9 @@ vsbtools/materials_dataset/Examples/
 
 The setup script creates a contained workspace with three virtual environments:
 `vsbtools`, `scout-matter`/MatterGen, and GRACE/`tensorpotential`. Notebook
-outputs are written to a separate run directory.
+outputs are written to a separate run directory. Each prompt accepts an existing
+venv root, including an editable MatterGen environment; pressing Enter creates
+the corresponding contained environment.
 
 ```bash
 bash vsbtools/materials_dataset/Examples/setup_reproducibility_envs.sh \
