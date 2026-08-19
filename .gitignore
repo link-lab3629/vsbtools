@@ -21,3 +21,13 @@ src/__pycache__
 /vsbtools/materials_tools/materials_dataset/analysis/unittests/PROCESSED_NEW/
 .aiignore
 .codex
+/vsbtools/materials_tools/materials_dataset/analysis/.ipynb_checkpoints/summary-checkpoint.py
+/vsbtools/materials_tools/materials_dataset/analysis/unittests/105POSCAR
+/vsbtools/materials_tools/materials_dataset/Doc/.ipynb_checkpoints/Crystal Dataset Use Cases-checkpoint.ipynb
+/vsbtools/materials_tools/materials_dataset/energy_estimation/unittests/relaxed_grace/POSCARS/0POSCAR
+/vsbtools/materials_tools/materials_dataset/energy_estimation/unittests/relaxed_grace/POSCARS/1POSCAR
+/vsbtools/materials_tools/materials_dataset/energy_estimation/unittests/relaxed_grace/data.csv
+/vsbtools/materials_tools/materials_dataset/energy_estimation/unittests/relaxed_grace/manifest.yaml
+/vsbtools/materials_tools/materials_dataset/Examples/.ipynb_checkpoints/*
+/vsbtools/materials_tools/materials_dataset/Examples/reproducibility_run/analysis_outputs/*
+/vsbtools/materials_tools/materials_dataset/Examples/reproducibility_run/MG_postprocess_pipelines/PROCESSED/*

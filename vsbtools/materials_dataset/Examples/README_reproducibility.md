@@ -159,11 +159,11 @@ If you already have the three environments, open the notebook in a `vsbtools`
 kernel and set the first code cell:
 
 ```python
-MATTER_SCOUT_PATH = Path("/path/to/scout-matter-or-venv")
-GRACE_ENV_OR_PYTHON = Path("/path/to/grace-venv-or-bin-python")
+MATTERGEN_ENV = Path("/path/to/scout-matter-or-venv")
+GRACE_ENV = Path("/path/to/grace-venv-or-bin-python")
 ```
 
-`MATTER_SCOUT_PATH` may point to:
+`MATTERGEN_ENV` may point to:
 
 - a `scout-matter` source tree,
 - a `scout-matter` virtual environment root,
@@ -174,7 +174,7 @@ For a MatterGen venv, the notebook resolves editable installs to their source
 tree and separately exposes the venv's site-packages dependencies, matching the
 behavior of the contained setup script.
 
-`GRACE_ENV_OR_PYTHON` may point to:
+`GRACE_ENV` may point to:
 
 - a GRACE/tensorpotential virtual environment root,
 - or that virtual environment's `bin/python`.
@@ -183,6 +183,7 @@ If these notebook variables are `None`, `vsbtools` falls back to:
 
 ```text
 MATTERGEN_PYTHON_PATH
+SCOUT_MATTER_SITE_PACKAGES
 GRACE_PYTHON
 ~/.config/vsbtools/external_paths.json
 ```
