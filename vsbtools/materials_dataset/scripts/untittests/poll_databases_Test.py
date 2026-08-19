@@ -96,9 +96,16 @@ class yaml_csv_poscars_Test(unittest.TestCase):
             "al": _FakeDataset([_FakeEntry("al1")]),
             "oq": _FakeDataset([_FakeEntry("oq1")]),
             "ma": _FakeDataset([_FakeEntry("mp1")]),
+            "op": _FakeDataset([_FakeEntry("op1")]),
         }
+
+        def optimade_loader(elements, **kwargs):
+            if kwargs.get("providers"):
+                raise RuntimeError("optimade unavailable")
+            return datasets["op"]
+
         loaders = {name: Mock(return_value=dataset) for name, dataset in datasets.items()}
-        loaders["op"] = Mock(side_effect=RuntimeError("optimade unavailable"))
+        loaders["op"] = Mock(side_effect=optimade_loader)
 
         with TemporaryDirectory() as tmpdir, \
                 patch.object(poll_databases_module, "LOADERS", loaders), \
@@ -108,14 +115,18 @@ class yaml_csv_poscars_Test(unittest.TestCase):
             phase_diagram_tools.return_value.height_above_hull_pa.return_value = 0.0
             ds = poll_databases(
                 {"Si"},
+                pref_db="op",
                 do_deduplication=False,
                 cache_root_path=Path(tmpdir),
             )
 
-        self.assertEqual(phase_diagram_tools.call_count, 3)
-        self.assertEqual({entry.id for entry in ds}, {"al1", "oq1", "mp1"})
-        self.assertEqual(ds.metadata["database_names"], ["alexandria", "oqmd", "MatProj"])
-        self.assertEqual(ds.metadata["preferred_database"], "al")
+        self.assertEqual(phase_diagram_tools.call_count, 4)
+        self.assertEqual({entry.id for entry in ds}, {"al1", "oq1", "mp1", "op1"})
+        self.assertEqual(
+            ds.metadata["database_names"],
+            ["alexandria", "oqmd", "MatProj", "optimade"],
+        )
+        self.assertEqual(ds.metadata["preferred_database"], "op")
 
     def test_poll_databases_accepts_optimade_source(self):
         optimade_loader = Mock(return_value=_FakeDataset([_FakeEntry("op1")]))

@@ -58,7 +58,7 @@ def poll_databases(elements,
     if isinstance(database_names, str):
         database_names = [database_names]
     else:
-        database_names = list(database_names or ['alexandria', 'oqmd', 'MatProj'])
+        database_names = list(database_names or ['alexandria', 'oqmd', 'MatProj', 'optimade'])
     pref_db = pref_db[:2].casefold()
 
     parameters_dict: Dict[str, object] = {
