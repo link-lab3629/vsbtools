@@ -766,16 +766,30 @@ def values_2_histo_data(values, name=None, bin_centers=None, bins=None, integer_
     return bin_centers, counts
 
 
-def histo_data_collection(ds_dict, callable_name, callable_params=None, auto_adjust_bins=False, n_bins=None,
-                          force_gpu: int = 0, filter_max_el: bool = True, **kwargs):
+def histo_data_collection(
+    ds_dict,
+    callable_name=None,
+    callable_params=None,
+    auto_adjust_bins=False,
+    n_bins=None,
+    force_gpu: int = 0,
+    filter_max_el: bool = True,
+    fn: Callable | None = None,
+    **kwargs,
+):
     """
-    Returns list of dictionaries: [{'label': str, 'bin_centers': iterable[floats], 'counts': iterable[floats]}]
+    Return histogram dictionaries for a named descriptor or an existing callable.
+
+    Pass exactly one of ``callable_name`` or ``fn``. The latter is useful when
+    :func:`callables_from_ds` has already reconstructed the descriptor from
+    MatterGen batch metadata.
     """
     histo_collection = []
     values_dict = calculate_values(
         ds_dict,
         callable_name,
         callable_params=callable_params,
+        fn=fn,
         filter_max_el=filter_max_el,
         force_gpu=force_gpu,
     )
