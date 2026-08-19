@@ -767,13 +767,18 @@ def values_2_histo_data(values, name=None, bin_centers=None, bins=None, integer_
 
 
 def histo_data_collection(ds_dict, callable_name, callable_params=None, auto_adjust_bins=False, n_bins=None,
-                          force_gpu: int = 0,
-                          **kwargs):
+                          force_gpu: int = 0, filter_max_el: bool = True, **kwargs):
     """
     Returns list of dictionaries: [{'label': str, 'bin_centers': iterable[floats], 'counts': iterable[floats]}]
     """
     histo_collection = []
-    values_dict = calculate_values(ds_dict, callable_name, callable_params=callable_params, force_gpu=force_gpu)
+    values_dict = calculate_values(
+        ds_dict,
+        callable_name,
+        callable_params=callable_params,
+        filter_max_el=filter_max_el,
+        force_gpu=force_gpu,
+    )
     if auto_adjust_bins:
         non_empty_values = [values for values in values_dict.values() if len(values) > 0]
         if non_empty_values:
