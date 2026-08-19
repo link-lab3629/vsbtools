@@ -57,11 +57,13 @@ and PyTorch versions before launching. GRACE runs through its own Python
 subprocess and may use a different version.
 
 `scout-matter` currently pins a CUDA PyTorch wheel (`torch==2.2.1+cu118`), so
-the setup script uses the PyTorch CUDA wheel index for that environment. It also
-preinstalls matching PyTorch Geometric binary wheels for packages such as
+the setup script uses the PyTorch CUDA wheel index for that environment and pins
+the contained VSBTools and scout-matter environments to `numpy==1.26.4`. This
+keeps PyTorch's compiled NumPy bridge on the NumPy 1.x ABI it expects. The script
+also preinstalls matching PyTorch Geometric binary wheels for packages such as
 `torch_cluster`, because those packages can fail if pip tries to build them from
-source before `torch` is importable. The reproducibility virtual environments use
-Python 3.9-3.11. After considering any reused environment, the script uses a
+source before `torch` is importable. The reproducibility virtual environments
+use Python 3.9-3.11. After considering any reused environment, the script uses a
 compatible local Python when available. Otherwise, for example on a system where
 `python3` is Python 3.12, it bootstraps `uv` and installs a managed Python 3.11
 under `state/` inside the contained workspace.

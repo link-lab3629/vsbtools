@@ -6,6 +6,7 @@ VSBTOOLS_REF="${VSBTOOLS_REF:-}"
 SCOUT_MATTER_REF="${SCOUT_MATTER_REF:-}"
 PYTHON_BIN="${PYTHON_BIN:-}"
 MANAGED_PYTHON_VERSION="${MANAGED_PYTHON_VERSION:-3.11}"
+NUMPY_VERSION="${NUMPY_VERSION:-1.26.4}"
 PYTORCH_VERSION="${PYTORCH_VERSION:-}"
 TORCHVISION_VERSION="${TORCHVISION_VERSION:-}"
 TORCHAUDIO_VERSION="${TORCHAUDIO_VERSION:-}"
@@ -75,6 +76,7 @@ Environment overrides:
   SCOUT_MATTER_REF          Default: repository default branch
   PYTHON_BIN                Python used to create venvs; defaults to a reused vsbtools/scout Python when supplied
   MANAGED_PYTHON_VERSION    Default: 3.11
+  NUMPY_VERSION             Default: 1.26.4 (compatible with the pinned PyTorch wheels)
   PYTORCH_VERSION           Linux/Windows: 2.2.1+cu118; macOS: 2.4.1
   TORCHVISION_VERSION       Linux/Windows: 0.17.1+cu118; macOS: 0.19.1
   TORCHAUDIO_VERSION        Linux/Windows: 2.2.1+cu118; macOS: 2.4.1
@@ -446,6 +448,7 @@ else
     make_venv "$SCOUT_VENV"
     SCOUT_PYTHON="$(venv_python "$SCOUT_VENV")"
     log "Installing scout-matter PyTorch/PyG binary dependencies"
+    "$SCOUT_PYTHON" -m pip install "numpy==$NUMPY_VERSION"
     pip_install_with_pytorch_index "$SCOUT_PYTHON" \
         "torch==$PYTORCH_VERSION" \
         "torchvision==$TORCHVISION_VERSION" \
@@ -505,6 +508,10 @@ else
     make_venv "$VSBTOOLS_VENV"
     VSBTOOLS_PYTHON="$(venv_python "$VSBTOOLS_VENV")"
     log "Installing vsbtools notebook/kernel environment"
+    # PyTorch 2.2.1 and its compiled extensions require the NumPy 1.x ABI.
+    # Install the pin first so the rest of the scientific stack resolves
+    # against the same NumPy version instead of briefly selecting NumPy 2.x.
+    "$VSBTOOLS_PYTHON" -m pip install "numpy==$NUMPY_VERSION"
     "$VSBTOOLS_PYTHON" -m pip install -e "$VSBTOOLS_SRC"
     "$VSBTOOLS_PYTHON" -m pip install \
         dscribe \
@@ -624,6 +631,7 @@ export VSBTOOLS_COMMIT="$VSBTOOLS_COMMIT"
 export SCOUT_MATTER_COMMIT="$SCOUT_MATTER_COMMIT"
 export REPRODUCIBILITY_PYTHON="$PYTHON_BIN"
 export MANAGED_PYTHON_VERSION="$MANAGED_PYTHON_VERSION"
+export NUMPY_VERSION="$NUMPY_VERSION"
 export PYTORCH_VERSION="$PYTORCH_VERSION"
 export TORCHVISION_VERSION="$TORCHVISION_VERSION"
 export TORCHAUDIO_VERSION="$TORCHAUDIO_VERSION"
@@ -665,6 +673,7 @@ cat > "$SETUP_MANIFEST" <<EOF
   "host_os": "$HOST_OS",
   "reproducibility_python": "$PYTHON_BIN",
   "managed_python_version": "$MANAGED_PYTHON_VERSION",
+  "numpy_version": "$NUMPY_VERSION",
   "pytorch_version": "$PYTORCH_VERSION",
   "torchvision_version": "$TORCHVISION_VERSION",
   "torchaudio_version": "$TORCHAUDIO_VERSION",
