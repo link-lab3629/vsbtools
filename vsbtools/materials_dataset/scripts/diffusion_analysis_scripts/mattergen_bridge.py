@@ -4,7 +4,6 @@ import sys
 import types
 from pathlib import Path
 
-import numpy as np
 import torch
 from ...external_paths import add_sys_path, resolve_external_path
 
@@ -242,14 +241,14 @@ def structure_to_tensors(struct, force_gpu: int):
     device = _device_from_force_gpu(force_gpu)
 
     cell = torch.tensor(
-        np.array(struct.lattice.matrix),
+        struct.lattice.matrix.tolist(),
         dtype=torch.float32,
         device=device,
     )
 
     # fractional coordinates
     pos = torch.tensor(
-        np.array(struct.frac_coords),
+        struct.frac_coords.tolist(),
         dtype=torch.float32,
         requires_grad=True,
         device=device,
@@ -289,21 +288,25 @@ def clear_globals():
     _clear_globals_impl()
 
 
+def _tensor_to_python(value):
+    """Convert a tensor without using Torch's optional NumPy bridge."""
+    value = value.detach().cpu()
+    return value.item() if value.numel() == 1 else value.tolist()
+
+
 def get_target_value_fn(fn_name, force_gpu: int = 0, **params):
     _require_mattergen()
     fn = lambda x: None
-    def as_scalar_or_array(value):
-        arr = value.cpu().detach().numpy()
-        return arr.item() if arr.size == 1 else arr
 
     if fn_name in mattergen_chemgraph_fn_collection:
         def fn(entry):
             x = entry2chemgraph(entry, force_gpu=force_gpu)
-            return mattergen_chemgraph_fn_collection[fn_name](x, t=None, **params).cpu().detach().numpy()[0]
+            value = mattergen_chemgraph_fn_collection[fn_name](x, t=None, **params)
+            return _tensor_to_python(value[0])
     elif fn_name in mattergen_cell_frac_types_fn_collection:
         def fn(entry):
             cell, frac, types = structure_to_tensors(entry.structure, force_gpu=force_gpu)
-            return as_scalar_or_array(mattergen_cell_frac_types_fn_collection[fn_name](
+            return _tensor_to_python(mattergen_cell_frac_types_fn_collection[fn_name](
                 cell,
                 frac,
                 types,
@@ -322,6 +325,6 @@ def get_loss_fn(fn_name, force_gpu: int = 0, **params):
         clear_globals()
         x = entry2chemgraph(entry, force_gpu=force_gpu)
         call_params = copy.deepcopy(params)
-        return LOSS_REGISTRY[fn_name](x, t=None, **call_params).cpu().detach().numpy().item()
+        return _tensor_to_python(LOSS_REGISTRY[fn_name](x, t=None, **call_params))
 
     return fn

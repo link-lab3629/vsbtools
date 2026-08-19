@@ -5,7 +5,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import torch
@@ -56,6 +57,43 @@ class MattergenPathConfiguration_Test(unittest.TestCase):
         finally:
             mattergen_bridge.mgen_path = previous_mgen_path
             sys.path[:] = previous_sys_path
+
+
+class MattergenTensorConversion_Test(unittest.TestCase):
+    def test_tensor_results_are_converted_without_numpy(self):
+        self.assertEqual(mattergen_bridge._tensor_to_python(torch.tensor(2.5)), 2.5)
+        self.assertEqual(
+            mattergen_bridge._tensor_to_python(torch.tensor([1.0, 2.0])),
+            [1.0, 2.0],
+        )
+
+    def test_structure_arrays_are_converted_through_python_lists(self):
+        structure = MagicMock()
+        structure.lattice.matrix.tolist.return_value = [
+            [3.0, 0.0, 0.0],
+            [0.0, 3.0, 0.0],
+            [0.0, 0.0, 3.0],
+        ]
+        structure.frac_coords.tolist.return_value = [
+            [0.0, 0.0, 0.0],
+            [0.5, 0.5, 0.5],
+        ]
+        structure.__iter__.return_value = iter([
+            SimpleNamespace(specie=SimpleNamespace(number=29)),
+            SimpleNamespace(specie=SimpleNamespace(number=15)),
+        ])
+
+        with patch.object(mattergen_bridge, "_require_mattergen"):
+            cell, positions, atomic_numbers = mattergen_bridge.structure_to_tensors(
+                structure,
+                force_gpu=0,
+            )
+
+        self.assertEqual(cell.shape, (3, 3))
+        self.assertEqual(positions.shape, (2, 3))
+        self.assertEqual(atomic_numbers.tolist(), [29, 15])
+        structure.lattice.matrix.tolist.assert_called_once_with()
+        structure.frac_coords.tolist.assert_called_once_with()
 
 
 class MattergenBridge_Test(unittest.TestCase):
@@ -110,8 +148,8 @@ class MattergenBridge_Test(unittest.TestCase):
         ) = compat_import
 
         struct = Structure.from_file(self.poscars_path / "agm003592845POSCAR")
-        cell = torch.tensor(np.array(struct.lattice.matrix), dtype=torch.float32)
-        frac = torch.tensor(np.array(struct.frac_coords), dtype=torch.float32, requires_grad=True)
+        cell = torch.tensor(struct.lattice.matrix.tolist(), dtype=torch.float32)
+        frac = torch.tensor(struct.frac_coords.tolist(), dtype=torch.float32, requires_grad=True)
         atomic_numbers = torch.tensor([site.specie.number for site in struct], dtype=torch.int64)
         num_atoms = torch.tensor([len(atomic_numbers)])
 
@@ -123,8 +161,8 @@ class MattergenBridge_Test(unittest.TestCase):
         )
 
         np.testing.assert_allclose(
-            real_diffusion_loss.volume_pa(real_x, t=None).detach().numpy(),
-            compat_volume_pa(compat_x, t=None).detach().numpy(),
+            real_diffusion_loss.volume_pa(real_x, t=None).detach().cpu().tolist(),
+            compat_volume_pa(compat_x, t=None).detach().cpu().tolist(),
             rtol=1e-6,
             atol=1e-7,
         )
@@ -132,10 +170,10 @@ class MattergenBridge_Test(unittest.TestCase):
         np.testing.assert_allclose(
             real_diffusion_loss.compute_mean_coordination(
                 cell, frac, atomic_numbers, num_atoms, type_A=5, type_B=26
-            ).detach().numpy(),
+            ).detach().cpu().tolist(),
             compat_compute_mean_coordination(
                 cell, frac, atomic_numbers, num_atoms, type_A=5, type_B=26
-            ).detach().numpy(),
+            ).detach().cpu().tolist(),
             rtol=1e-6,
             atol=1e-7,
         )
@@ -146,10 +184,10 @@ class MattergenBridge_Test(unittest.TestCase):
         np.testing.assert_allclose(
             real_diffusion_loss.LOSS_REGISTRY["environment"](
                 real_x, t=None, target=copy.deepcopy(target)
-            ).detach().numpy(),
+            ).detach().cpu().tolist(),
             compat_loss_registry["environment"](
                 compat_x, t=None, target=copy.deepcopy(target)
-            ).detach().numpy(),
+            ).detach().cpu().tolist(),
             rtol=1e-6,
             atol=1e-7,
         )
