@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Assume this script lives directly inside vsbtools_reproducibility_env.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="$ROOT/reproducibility_env.sh"
+ENV_FILE="$ROOT/vsbtools_reproducibility_env/reproducibility_env.sh"
 
 if [[ ! -f "$ENV_FILE" ]]; then
     echo "Missing environment file: $ENV_FILE" >&2
