@@ -3,6 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import types
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -10,7 +11,7 @@ from ..nn_estimator import NNEstimator
 from .. import mattersim_bridge, grace_bridge
 from ...crystal_entry import CrystalEntry
 from ...io.structures_dataset_io import StructureDatasetIO, _safe_structure_from_file
-from ...io import write
+from ...io import read, write
 
 PATH_WITH_TESTS = Path(__file__).parent
 PATH_WITH_DATASETS = PATH_WITH_TESTS / "../../unittests_datasets"
@@ -106,3 +107,29 @@ class NNEstimator_Test(unittest.TestCase):
         self.assertEqual(calls["estimate_entry_energy"]["force_gpu"], 2)
         self.assertEqual(calls["relax_batch"]["force_gpu"], 2)
         self.assertEqual(calls["relax_entry"]["force_gpu"], 2)
+
+    def test_grace_model_is_forwarded_and_recorded_in_manifest(self):
+        calls = {}
+
+        def estimate_batch(dataset, **kwargs):
+            calls.update(kwargs)
+            return np.zeros(len(dataset))
+
+        with patch.object(grace_bridge, "estimate_batch", side_effect=estimate_batch):
+            estimator = NNEstimator(
+                default_model="grace",
+                grace_model="GRACE-3L-OMAT-large-ft-AM",
+            )
+            estimated = estimator.estimate_dataset_energies(self.dataset)
+
+        self.assertEqual(calls["grace_model"], "GRACE-3L-OMAT-large-ft-AM")
+        self.assertEqual(estimated.metadata["estimator"], "grace")
+        self.assertEqual(
+            estimated.metadata["grace_model"],
+            "GRACE-3L-OMAT-large-ft-AM",
+        )
+
+        with TemporaryDirectory() as tmpdir:
+            write(estimated, tmpdir)
+            loaded = read(Path(tmpdir) / "manifest.yaml")
+        self.assertEqual(loaded.metadata["grace_model"], "GRACE-3L-OMAT-large-ft-AM")

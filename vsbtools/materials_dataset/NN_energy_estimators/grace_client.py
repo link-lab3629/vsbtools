@@ -10,6 +10,24 @@ from ..external_paths import (
     resolve_external_path,
 )
 
+DEFAULT_GRACE_MODEL = "GRACE-2L-OMAT-large-ft-AM"
+GRACE_MODEL_ENV_VAR = "VSB_GRACE_MODEL"
+
+
+def resolve_grace_model(grace_model: str | None = None) -> str:
+    """Return the configured GRACE model name used by helper subprocesses."""
+    if grace_model is None:
+        grace_model = os.environ.get(GRACE_MODEL_ENV_VAR) or DEFAULT_GRACE_MODEL
+    if not isinstance(grace_model, str):
+        raise TypeError(
+            f"grace_model must be a non-empty string, got {type(grace_model).__name__}"
+        )
+    grace_model = grace_model.strip()
+    if not grace_model:
+        raise ValueError("grace_model must be a non-empty string")
+    return grace_model
+
+
 def _resolve_grace_python(*, prompt: bool, explicit_path=None) -> Path | None:
     return resolve_external_path(
         name="GRACE Python environment",
@@ -52,13 +70,17 @@ relax_worker = helpers_path / "grace_relaxer_helper_batch.py"
 
 
 
-def _helper_env(force_gpu: int | None = None) -> dict[str, str]:
+def _helper_env(
+    force_gpu: int | None = None,
+    grace_model: str | None = None,
+) -> dict[str, str]:
     env = os.environ.copy()
     gpu_index = _normalize_force_gpu(force_gpu)
     if gpu_index is None:
         env.pop("VSB_FORCE_GPU_INDEX", None)
     else:
         env["VSB_FORCE_GPU_INDEX"] = str(gpu_index)
+    env[GRACE_MODEL_ENV_VAR] = resolve_grace_model(grace_model)
     return env
 
 
@@ -73,7 +95,12 @@ def _normalize_force_gpu(force_gpu: int | None) -> int | None:
     return idx
 
 
-def get_energy(atms, grace_python=None, force_gpu: int | None = None):
+def get_energy(
+    atms,
+    grace_python=None,
+    force_gpu: int | None = None,
+    grace_model: str | None = None,
+):
     # ---- serialise the structure to an in-memory JSON string -------------
     grace_python = _require_grace_python(grace_python)
     buf = io.StringIO()
@@ -87,21 +114,26 @@ def get_energy(atms, grace_python=None, force_gpu: int | None = None):
         text=True,
         capture_output=True,
         check=True,
-        env=_helper_env(force_gpu=force_gpu),
+        env=_helper_env(force_gpu=force_gpu, grace_model=grace_model),
     )
 
     return float(proc.stdout.strip().split('\n')[-1])      # one number per call
 
 class EnergyStream:
     """Context-manager that streams Atoms objects to the other v-env."""
-    def __init__(self, grace_python=None, force_gpu: int | None = None):
+    def __init__(
+        self,
+        grace_python=None,
+        force_gpu: int | None = None,
+        grace_model: str | None = None,
+    ):
         self.other_python = _require_grace_python(grace_python)
         self.proc = subprocess.Popen(
             [self.other_python.as_posix(), energy_worker],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             text=True,
-            env=_helper_env(force_gpu=force_gpu),
+            env=_helper_env(force_gpu=force_gpu, grace_model=grace_model),
         )
 
     def calc(self, atoms):
@@ -141,7 +173,11 @@ class EnergyStream:
     def __exit__(self, exc_type, exc, tb):
         self.close()
 
-def relax(ats, force_gpu: int | None = None):
+def relax(
+    ats,
+    force_gpu: int | None = None,
+    grace_model: str | None = None,
+):
     """
     Relax a single ASE Atoms object using the external grace venv.
     """
@@ -155,7 +191,7 @@ def relax(ats, force_gpu: int | None = None):
         input=json_atoms,
         text=True,
         capture_output=True,  # inspect stdout / stderr ourselves
-        env=_helper_env(force_gpu=force_gpu),
+        env=_helper_env(force_gpu=force_gpu, grace_model=grace_model),
     )
 
     if proc.returncode != 0:
@@ -192,14 +228,18 @@ class RelaxStream:
       - stdout: one ASE-JSON relaxed structure per line
     """
 
-    def __init__(self, force_gpu: int | None = None):
+    def __init__(
+        self,
+        force_gpu: int | None = None,
+        grace_model: str | None = None,
+    ):
         grace_python = _require_grace_python()
         self.proc = subprocess.Popen(
             [grace_python.as_posix(), "-u", str(relax_worker)],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             text=True,
-            env=_helper_env(force_gpu=force_gpu),
+            env=_helper_env(force_gpu=force_gpu, grace_model=grace_model),
         )
 
     def relax(self, ats):

@@ -3,10 +3,24 @@ import time
 from ..crystal_dataset import CrystalDataset, CrystalEntry
 from ..NN_energy_estimators import grace_client
 
-def estimate_batch(dataset: CrystalDataset, force_gpu: int | None = None, **kwargs):
+
+def describe_model(grace_model: str | None = None, **kwargs) -> dict[str, str]:
+    """Return model metadata persisted on datasets produced by this bridge."""
+    return {"grace_model": grace_client.resolve_grace_model(grace_model)}
+
+
+def estimate_batch(
+    dataset: CrystalDataset,
+    force_gpu: int | None = None,
+    grace_model: str | None = None,
+    **kwargs,
+):
     progress_interval_s = kwargs.get("progress_interval_s", 0.5)
     estimator_name = kwargs.get("estimator_name", "grace")
-    with grace_client.EnergyStream(force_gpu=force_gpu) as es:
+    with grace_client.EnergyStream(
+        force_gpu=force_gpu,
+        grace_model=grace_model,
+    ) as es:
         n_entries = len(dataset)
         energies = np.zeros(n_entries)
         last_progress = 0.0
@@ -32,11 +46,28 @@ def estimate_batch(dataset: CrystalDataset, force_gpu: int | None = None, **kwar
             print(f"\r{status}{' ' * max(0, status_len - len(status))}")
     return energies
 
-def estimate_entry_energy(e: CrystalEntry, force_gpu: int | None = None, **kwargs):
-    return grace_client.get_energy(e.structure.to_ase_atoms(), force_gpu=force_gpu)
+def estimate_entry_energy(
+    e: CrystalEntry,
+    force_gpu: int | None = None,
+    grace_model: str | None = None,
+    **kwargs,
+):
+    return grace_client.get_energy(
+        e.structure.to_ase_atoms(),
+        force_gpu=force_gpu,
+        grace_model=grace_model,
+    )
 
-def relax_batch(dataset: CrystalDataset, force_gpu: int | None = None, **kwargs):
-    with grace_client.RelaxStream(force_gpu=force_gpu) as rs:
+def relax_batch(
+    dataset: CrystalDataset,
+    force_gpu: int | None = None,
+    grace_model: str | None = None,
+    **kwargs,
+):
+    with grace_client.RelaxStream(
+        force_gpu=force_gpu,
+        grace_model=grace_model,
+    ) as rs:
         new_structures = [None] * len(dataset)
         for i, e in enumerate(dataset):
             try:
@@ -49,5 +80,14 @@ def relax_batch(dataset: CrystalDataset, force_gpu: int | None = None, **kwargs)
                 print (f"Couldn't relax structure with id = {e.id} ({e.poscarname}) from dataset id = {dataset.dataset_id}")
     return new_structures
 
-def relax_entry(e: CrystalEntry, force_gpu: int | None = None, **kwargs):
-    return grace_client.relax(e.structure.to_ase_atoms(), force_gpu=force_gpu)
+def relax_entry(
+    e: CrystalEntry,
+    force_gpu: int | None = None,
+    grace_model: str | None = None,
+    **kwargs,
+):
+    return grace_client.relax(
+        e.structure.to_ase_atoms(),
+        force_gpu=force_gpu,
+        grace_model=grace_model,
+    )

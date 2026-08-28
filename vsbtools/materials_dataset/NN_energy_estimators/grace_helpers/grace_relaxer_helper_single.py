@@ -28,8 +28,9 @@ if force_gpu_index is not None:
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"] = force_gpu_index
 from tensorpotential.calculator import grace_fm
-calc = grace_fm('GRACE-2L-OMAT-large-ft-AM')
-
+DEFAULT_GRACE_MODEL = "GRACE-2L-OMAT-large-ft-AM"
+grace_model = os.environ.get("VSB_GRACE_MODEL") or DEFAULT_GRACE_MODEL
+calc = grace_fm(grace_model)
 
 
 # --------------------------------------------------------------------------- #
