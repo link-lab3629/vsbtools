@@ -7,15 +7,95 @@ tables, Pareto fronts, and histogram or KDE figures.
 The examples use `Ni-Pd-H` with target `CN([Pd,Ni]-H) = 6`. Change the chemical
 system, species, target, GPU number, and guidance weights for the experiment.
 
-## 1. Install from GitHub
+## 0. Prepare Linux or macOS
 
-Requirements: Git, an NVIDIA GPU/driver suitable for CUDA 11.8, and internet
-access for Python packages, MatterGen checkpoints, GRACE, and OPTIMADE.
+Run all commands in a terminal. Python 3.11 is recommended. Internet access is
+needed for GitHub repositories, Python packages, MatterGen checkpoints, GRACE,
+and OPTIMADE data.
+
+On Linux, an NVIDIA GPU is strongly recommended; the installer uses CUDA 11.8
+PyTorch wheels by default. On macOS, the installer selects CPU-compatible
+wheels automatically. MatterGen can fall back to CPU, although generation and
+energy estimation will be much slower.
+
+### 0.1 Install operating-system prerequisites
+
+Debian or Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install -y git build-essential python3 python3-venv python3-dev
+```
+
+Fedora or RHEL:
+
+```bash
+sudo dnf install -y git gcc gcc-c++ make python3 python3-devel
+```
+
+macOS with Homebrew:
+
+```bash
+xcode-select --install
+brew install git python@3.11
+```
+
+If the Xcode command reports that the command-line tools are already installed,
+continue with the next step. Conda users can skip the Homebrew Python install;
+the Conda environment below supplies Python 3.11 and Git.
+
+### 0.2 Create one bootstrap environment
+
+Choose either standard Python `venv` or Conda. This bootstrap environment only
+provides the Python interpreter used by the installer.
+
+#### Option A: `python3 -m venv`
 
 ```bash
 mkdir mattergen-work
 cd mattergen-work
 
+# On macOS with Homebrew, use python3.11 here if python3 is another version.
+python3 -m venv bootstrap-venv
+source bootstrap-venv/bin/activate
+python -m pip install --upgrade pip
+
+export PYTHON_FOR_SETUP="$PWD/bootstrap-venv/bin/python"
+```
+
+#### Option B: Conda
+
+Use this option when Conda or Miniconda is already installed:
+
+```bash
+mkdir mattergen-work
+cd mattergen-work
+
+conda create -n mattergen-bootstrap python=3.11 pip git -y
+conda activate mattergen-bootstrap
+
+export PYTHON_FOR_SETUP="$CONDA_PREFIX/bin/python"
+```
+
+Confirm the prerequisites before continuing:
+
+```bash
+git --version
+"$PYTHON_FOR_SETUP" --version
+```
+
+If the standard `python3` command is newer than the workflow supports, the
+repository installer uses it to bootstrap a managed Python 3.11 automatically.
+
+The next installer creates three independent environments under
+`workflow-env/venvs/`: `vsbtools`, `scout-matter`, and `grace`. Keep the
+bootstrap environment active only while running the installer.
+
+## 1. Install from GitHub
+
+Continue from the `mattergen-work` directory created in Section 0:
+
+```bash
 git clone https://github.com/link-lab3629/vsbtools.git
 git clone https://github.com/link-lab3629/scout-matter.git
 
@@ -24,6 +104,7 @@ SCOUT_MATTER_REPO_URL="$PWD/scout-matter" \
 bash "$PWD/vsbtools/vsbtools/materials_dataset/Examples/setup_reproducibility_envs.sh" \
   --root "$PWD/workflow-env" \
   --run-root "$PWD/analysis-run" \
+  --python "$PYTHON_FOR_SETUP" \
   --no-launch
 ```
 
