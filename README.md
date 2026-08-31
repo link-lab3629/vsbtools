@@ -69,6 +69,11 @@ databases, cleaning, deduplication, symmetrization, energy and hull analysis,
 dataset persistence, reporting, Pareto-front examples, and multi-dataset
 descriptor plots.
 
+For a concise installation-to-analysis recipe covering unguided MatterGen,
+ranked-softplus guidance, grouped-species coordination guidance, postprocessing,
+Pareto fronts, and histogram/KDE figures, see
+[`MatterGen_End_to_End.md`](vsbtools/materials_dataset/Doc/MatterGen_End_to_End.md).
+
 ## Scenario Workflows
 
 `analysis/scenario_pipeline.py` runs YAML/JSON-defined workflows as a directed

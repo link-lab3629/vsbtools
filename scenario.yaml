@@ -1,0 +1,391 @@
+# Complete scenario template for
+# vsbtools.materials_tools.materials_dataset.analysis.scenario_pipeline.
+#
+# This file keeps the effective defaults visible and comments optional or
+# alternative settings.  Every option shown is representable in YAML and is
+# consumed by the scenario pipeline.  Python objects supplied internally by
+# the runtime are omitted.  The active stages form a full, expensive reference
+# pipeline.  Comment stages that are not wanted and update the `needs` values
+# of downstream stages accordingly.
+#
+# The operation registry currently contains:
+#   parse_raw, discard_bad_density, discard_close_atoms, symmetrize,
+#   poll_db, merge_base_into_ref, estimate, relax, filter_hull,
+#   deduplicate, postprocess_dft.
+#
+# `postprocess_dft` is registered for compatibility but currently raises
+# NotImplementedError.  The legacy names `symmetrize_raw`, `augment_by_ref`,
+# and `augment_raw_by_db` are metadata aliases, not registered operation names.
+
+version: 1
+
+globals:
+  # `process_generation_dir(...)` fills this from batch metadata.  For direct
+  # ScenarioPipeline use, uncomment and customize it.
+  # elements: [Si, O]
+
+  toolkit_options:
+    # -----------------------------------------------------------------------
+    # StructureDatasetIO
+    # -----------------------------------------------------------------------
+    structure_parser:
+      # `process_generation_dir(...)` overwrites this value.  Set it here for
+      # direct ScenarioPipeline use.
+      root: null
+      patterns_priority:
+        - "*.cif"
+        - "*POSCAR"
+        - "*POSCARS"
+        - "*.extxyz"
+      # `pattern` is a backward-compatible one-pattern override.  When set,
+      # it replaces `patterns_priority`.
+      pattern: null
+      id_prefix: ""
+      expand_archives: true
+      source_name: "NA"
+      # If omitted, process_generation_dir supplies its batch metadata file.
+      # batch_metadata_file: "input_parameters.txt"
+
+    # -----------------------------------------------------------------------
+    # SymmetryToolkit
+    # -----------------------------------------------------------------------
+    symmetry:
+      # Default analysis and enforcing tolerances.
+      a_sym_prec: 1.0e-4
+      e_sym_prec: 1.0e-2
+
+    # -----------------------------------------------------------------------
+    # SimilarityTools
+    # -----------------------------------------------------------------------
+    similarity:
+      # Context resolves this bridge and supplies its distance function to
+      # SimilarityTools.
+      bridge: dscribe
+      # This is the effective default inherited from DScribeBridge below.
+      tol_FP: 0.012
+      # bridge: uspex       # requires the external USPEX Python package
+
+    # -----------------------------------------------------------------------
+    # DScribeBridge
+    # -----------------------------------------------------------------------
+    dscribe:
+      # `elements` is filled from globals.elements by Context before this
+      # toolkit is constructed.  Leave it absent rather than setting null.
+      preset: uspex
+      create_kwargs: {}
+      metric: cosine
+      tol_FP: 0.012
+      fingerprint_cache_size: null
+
+      # Parameters consumed by the built-in USPEX-compatible MBTR preset.
+      Rmax: 10.0
+      sigma: 0.03
+      delta: 0.08
+      # `r_max` is an accepted spelling for Rmax; use one spelling at a time.
+      # r_max: 10.0
+
+      # ---------------------- custom DScribe descriptor ------------------
+      # To use these, set `preset: null` and give the name of a descriptor
+      # class exported by dscribe.descriptors.
+      # preset: null
+      # descriptor_cls: MBTR
+      # descriptor_kwargs:
+      #   species: [Si, O]
+      #   periodic: true
+      #   geometry:
+      #     function: distance
+      #   grid:
+      #     min: 0.04
+      #     max: 9.96
+      #     sigma: 0.03
+      #     n: 125
+      #   weighting:
+      #     function: inverse_square
+      #     r_cut: 10.0
+      #   normalization: valle_oganov
+      #   normalize_gaussians: true
+      #   sparse: false
+      # metric: euclidean
+      # metric: l2
+
+      # Additional keyword arguments are forwarded to the preset's MBTR
+      # constructor and can override the generated values above.
+      # periodic: true
+      # geometry: {function: distance}
+      # grid: {min: 0.04, max: 9.96, sigma: 0.03, n: 125}
+      # weighting: {function: inverse_square, r_cut: 10.0}
+      # normalization: valle_oganov
+      # normalize_gaussians: true
+      # sparse: false
+
+    # -----------------------------------------------------------------------
+    # USPEXBridge
+    # -----------------------------------------------------------------------
+    uspex:
+      # `elements` is filled from globals.elements when this toolkit is used.
+      legacy: true
+      tol_FP: null
+      # elements: [Si, O]
+
+    # PhaseDiagramTools is configured by filter_hull when that stage runs.
+    phase_diag: {}
+
+    # -----------------------------------------------------------------------
+    # NNEstimator
+    # -----------------------------------------------------------------------
+    estimator:
+      default_model: mattersim
+      # None lets the selected backend decide whether to use the available
+      # accelerator.  Existing backends use 0 for CPU and 1 for GPU.
+      force_gpu: null
+      # Used by GRACE when model_name=grace.
+      grace_model: null
+      # default_model: grace
+      # grace_model: GRACE-3L-OMAT-large-ft-AM
+
+stages:
+  # -------------------------------------------------------------------------
+  # Raw input and geometry checks
+  # -------------------------------------------------------------------------
+  parse_raw:
+    op: parse_raw
+    needs: []
+    params: {}
+    # `elements` overrides globals.elements for this stage.
+    # elements: [Si, O]
+
+  discard_bad_density:
+    op: discard_bad_density
+    needs: [parse_raw]
+    params: {}
+
+  discard_close_atoms:
+    op: discard_close_atoms
+    needs: [discard_bad_density]
+    params: {}
+
+  symmetrize:
+    op: symmetrize
+    needs: [discard_close_atoms]
+    params: {}
+    # The registered operation currently uses
+    # get_symmetrized_dataset(primitive=True, drop_energy=True) directly.
+    # `primitive` and `drop_energy` are therefore not operation parameters.
+
+  # -------------------------------------------------------------------------
+  # Reference database collection
+  # -------------------------------------------------------------------------
+  poll_db:
+    op: poll_db
+    needs: [symmetrize]
+    params:
+      # op_poll_db supplies 0.1 when this is omitted.
+      max_ehull: 0.1
+      database_names:
+        - alexandria
+        - oqmd
+        - MatProj
+        - optimade
+      pref_db: al
+      do_ehull_filtering: true
+      do_deduplication: true
+      # null delegates to the configured SimilarityTools tolerance.
+      tol_FP: null
+      optimade_fallback: true
+
+      # These are the provider-specific loader defaults.  The keys are
+      # normalized by poll_databases to their first two letters: al, oq, mp,
+      # and op.  `ma` is an alias for Materials Project and normalizes to mp.
+      loader_kwargs:
+        al:
+          root: null
+          pattern: "alexandria*.json"
+          # poll_db disables prompting by default when OPTIMADE fallback is on.
+          prompt: false
+          # prompt: true  # allow an interactive path prompt for local fallback
+          force_refresh: false
+          cache_label: null
+          message: null
+        oq:
+          force_refresh: false
+          cache_label: null
+          message: null
+        mp:
+          api_key: null
+          force_refresh: false
+          cache_label: null
+          message: null
+        op:
+          providers: [alexandria, materials_project, oqmd]
+          alexandria_functional: pbe
+          energy_mode: formation
+          mp_thermo_type: "gga_gga+u"
+          page_limit: 500
+          timeout: 1000.0
+          skip_missing_energy: true
+          strict_structures: true
+          do_deduplication: true
+          show_progress: true
+          tol_FP: null
+          similarity_bridge_kwargs: {}
+          per_provider_cache: true
+          force_provider_refresh: false
+          force_refresh: false
+          cache_label: null
+          message: null
+
+          # similarity_bridge_kwargs accepts the same YAML-configurable
+          # DScribeBridge settings shown in globals.toolkit_options.dscribe.
+          # It is used only for deduplication inside the OPTIMADE loader.
+          # similarity_bridge_kwargs:
+          #   preset: uspex
+          #   create_kwargs: {}
+          #   metric: cosine
+          #   tol_FP: 0.012
+          #   fingerprint_cache_size: null
+          #   Rmax: 10.0
+          #   sigma: 0.03
+          #   delta: 0.08
+          #   # For a custom descriptor, set preset: null and use a DScribe
+          #   # class name plus ordinary YAML descriptor arguments.
+          #   # descriptor_cls: MBTR
+          #   # descriptor_kwargs: {}
+
+      # Inner poll_databases cache root.  The default is the package cache.
+      cache_root_path: null
+
+      # Optional work performed on the polled reference dataset.  Both flags
+      # default to false in this registered operation.
+      estimate_energies: false
+      do_relaxation: false
+      # When either flag above is true, these are forwarded to NNEstimator:
+      # model_name: mattersim
+      # force_gpu: null
+      # grace_model: GRACE-3L-OMAT-large-ft-AM
+      # progress_interval_s: 0.5
+
+      # Outer operation-level cache directory.  If omitted, a deterministic
+      # package-cache directory is generated from elements and parameters.
+      # cache_base_path: /path/to/poll_db_cache
+
+  # -------------------------------------------------------------------------
+  # Add generated structures to the reference set
+  # -------------------------------------------------------------------------
+  merge_base_into_ref:
+    op: merge_base_into_ref
+    needs: [symmetrize, poll_db]
+    params:
+      # Defaults are the first and second names in `needs`, respectively.
+      # base_parent: symmetrize
+      # ref_parent: poll_db
+      merge: false
+
+  # -------------------------------------------------------------------------
+  # Energy estimation
+  # -------------------------------------------------------------------------
+  estimate:
+    op: estimate
+    needs: [merge_base_into_ref]
+    params: {}
+    # Available parameters are forwarded to NNEstimator.  Omitted values use
+    # globals.toolkit_options.estimator and the backend defaults.
+    # model_name: mattersim
+    # force_gpu: null
+    # grace_model: GRACE-3L-OMAT-large-ft-AM
+    # progress_interval_s: 0.5
+
+  # -------------------------------------------------------------------------
+  # Hull filtering
+  # -------------------------------------------------------------------------
+  filter_hull:
+    op: filter_hull
+    needs: [estimate]
+    params:
+      max_ehull: 0.1
+      # With one parent, both default to that parent.  With multiple parents,
+      # use these names to choose the hull source and filtered dataset.
+      # pd_source: reference_dataset_stage
+      # filter_from: generated_dataset_stage
+
+  # -------------------------------------------------------------------------
+  # Deduplication and clustering
+  # -------------------------------------------------------------------------
+  deduplicate:
+    op: deduplicate
+    needs: [filter_hull]
+    params:
+      # null uses SimilarityTools.tol_FP.
+      tol_FP: null
+      check_clusters_file: false
+      check_dist_matrix_file: false
+      save_clusters_file: false
+      save_dist_matrix_file: false
+
+      # The registered operation exposes the five controls above.  Internally
+      # they drive genutils/clustering_chunk.py as follows:
+      #   tol_FP                  -> cluster tolerance
+      #   check/save_clusters_file -> load/save cluster pickle
+      #   check/save_dist_matrix_file -> load/save distance-matrix pickle
+      # Fitness values, threshold, file paths, labels, and the distance
+      # function are derived internally by SimilarityTools.
+
+  # -------------------------------------------------------------------------
+  # Optional relaxation branch
+  # -------------------------------------------------------------------------
+  # Uncomment this branch when relaxation is wanted.  A relaxed structure must
+  # be estimated before it can be passed to filter_hull.
+  # relax:
+  #   op: relax
+  #   needs: [merge_base_into_ref]
+  #   params: {}
+  #   # model_name: grace
+  #   # force_gpu: 1
+  #   # grace_model: GRACE-3L-OMAT-large-ft-AM
+  #   # progress_interval_s: 0.5
+  #
+  # estimate_relaxed:
+  #   op: estimate
+  #   needs: [relax]
+  #   params: {}
+  #   # model_name: grace
+  #   # force_gpu: 1
+  #   # grace_model: GRACE-3L-OMAT-large-ft-AM
+  #   # progress_interval_s: 0.5
+  #
+  # filter_hull_relaxed:
+  #   op: filter_hull
+  #   needs: [estimate_relaxed]
+  #   params:
+  #     max_ehull: 0.1
+  #
+  # deduplicate_relaxed:
+  #   op: deduplicate
+  #   needs: [filter_hull_relaxed]
+  #   params:
+  #     tol_FP: null
+  #     check_clusters_file: false
+  #     check_dist_matrix_file: false
+  #     save_clusters_file: false
+  #     save_dist_matrix_file: false
+
+  # -------------------------------------------------------------------------
+  # Alternative multi-parent hull-filter example
+  # -------------------------------------------------------------------------
+  # This demonstrates the `pd_source` and `filter_from` options.  It is an
+  # alternative invocation of the already registered filter_hull operation.
+  # filter_generated_against_reference:
+  #   op: filter_hull
+  #   needs: [estimate, poll_db]
+  #   params:
+  #     max_ehull: 0.1
+  #     pd_source: poll_db
+  #     filter_from: estimate
+
+  # -------------------------------------------------------------------------
+  # Registered placeholder
+  # -------------------------------------------------------------------------
+  # postprocess_dft:
+  #   op: postprocess_dft
+  #   needs: []
+  #   params: {}
+  #   # Registered, but currently raises NotImplementedError.
