@@ -115,6 +115,9 @@ bash ./install_vsbtools_mattergen.sh \
   --editable
 ```
 
+Use `--vsbtools-ref BRANCH`, `--mattergen-ref BRANCH`, and optionally `--fetch`
+to select source branches during installation.
+
 See the [end-to-end MatterGen guide](vsbtools/materials_dataset/Doc/MatterGen_End_to_End.md)
 for generation, postprocessing, Pareto fronts, and distribution plots.
 

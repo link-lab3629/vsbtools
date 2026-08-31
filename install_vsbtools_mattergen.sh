@@ -10,6 +10,9 @@ ENV_ROOT="$CODE_ROOT/workflow-env"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 INSTALL_MODE="editable"
 INSTALL_GRACE=1
+VSBTOOLS_REF=""
+MATTERGEN_REF=""
+FETCH_SOURCES=0
 
 NUMPY_VERSION="${NUMPY_VERSION:-1.26.4}"
 PYTORCH_VERSION="${PYTORCH_VERSION:-}"
@@ -31,6 +34,10 @@ Options:
   --mattergen-source PATH  scout-matter/MatterGen checkout (default: sibling scout-matter)
   --env-root PATH          Environment root (default: sibling workflow-env)
   --python PATH            Python 3.10 or 3.11 used to create environments
+  --vsbtools-ref REF       VSBTools branch, tag, or commit to check out
+  --mattergen-ref REF      MatterGen branch, tag, or commit to check out
+  --fetch                  Fetch origin before resolving requested refs; local
+                           branches are then fast-forwarded when possible
   --editable               Install VSBTools and MatterGen editably (default)
   --regular                Install regular source snapshots into the environments
   --no-grace               Skip the GRACE/tensorpotential environment
@@ -40,6 +47,10 @@ Editable-install disclaimer:
   Later source edits change future runs. Preserve commit hashes and any
   uncommitted patch with important results. Use --regular for environments
   whose imports should remain unchanged when the checkouts are edited.
+
+Example using selected branches:
+  ./install_vsbtools_mattergen.sh --vsbtools-ref analysis-dev \
+    --mattergen-ref guided-generation --fetch
 EOF
 }
 
@@ -73,6 +84,20 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] || missing_value "$1"
             PYTHON_BIN="$2"
             shift 2
+            ;;
+        --vsbtools-ref)
+            [[ $# -ge 2 ]] || missing_value "$1"
+            VSBTOOLS_REF="$2"
+            shift 2
+            ;;
+        --mattergen-ref|--scout-matter-ref)
+            [[ $# -ge 2 ]] || missing_value "$1"
+            MATTERGEN_REF="$2"
+            shift 2
+            ;;
+        --fetch)
+            FETCH_SOURCES=1
+            shift
             ;;
         --editable)
             INSTALL_MODE="editable"
@@ -122,6 +147,50 @@ git_dirty() {
     fi
 }
 
+git_branch() {
+    git -C "$1" symbolic-ref --quiet --short HEAD 2>/dev/null \
+        || printf 'detached\n'
+}
+
+checkout_source_ref() {
+    local source="$1"
+    local ref="$2"
+    local label="$3"
+    local branch_name
+
+    [[ -n "$ref" ]] || return
+    git -C "$source" rev-parse --git-dir >/dev/null 2>&1 \
+        || fail "$label source is not a Git checkout: $source"
+    if [[ -n "$(git -C "$source" status --porcelain --untracked-files=normal)" ]]; then
+        fail "$label checkout has uncommitted or untracked files; preserve them before selecting '$ref'"
+    fi
+
+    if [[ "$FETCH_SOURCES" -eq 1 ]]; then
+        log "Fetching $label refs from origin"
+        git -C "$source" fetch --tags --prune origin
+    fi
+
+    branch_name="${ref#refs/heads/}"
+    branch_name="${branch_name#origin/}"
+    if git -C "$source" show-ref --verify --quiet "refs/heads/$branch_name"; then
+        git -C "$source" checkout "$branch_name"
+        if [[ "$FETCH_SOURCES" -eq 1 ]] \
+            && git -C "$source" show-ref --verify --quiet \
+                "refs/remotes/origin/$branch_name"; then
+            git -C "$source" merge --ff-only "origin/$branch_name"
+        fi
+    elif git -C "$source" show-ref --verify --quiet \
+        "refs/remotes/origin/$branch_name"; then
+        git -C "$source" checkout --track -b "$branch_name" "origin/$branch_name"
+    elif git -C "$source" rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+        git -C "$source" checkout --detach "$ref"
+    else
+        fail "$label ref '$ref' was not found; rerun with --fetch if it exists on origin"
+    fi
+
+    log "$label source: $(git_branch "$source") at $(git_commit "$source")"
+}
+
 make_venv() {
     local venv="$1"
     if [[ ! -x "$venv/bin/python" ]]; then
@@ -146,6 +215,8 @@ require_command "$PYTHON_BIN"
 
 VSBTOOLS_SOURCE="$(canonical_directory "$VSBTOOLS_SOURCE")"
 MATTERGEN_SOURCE="$(canonical_directory "$MATTERGEN_SOURCE")"
+checkout_source_ref "$VSBTOOLS_SOURCE" "$VSBTOOLS_REF" "VSBTools"
+checkout_source_ref "$MATTERGEN_SOURCE" "$MATTERGEN_REF" "MatterGen"
 [[ -f "$VSBTOOLS_SOURCE/pyproject.toml" ]] \
     || fail "VSBTools pyproject.toml is missing under $VSBTOOLS_SOURCE"
 [[ -f "$MATTERGEN_SOURCE/pyproject.toml" ]] \
@@ -289,6 +360,8 @@ PY
 
 VSBTOOLS_COMMIT="$(git_commit "$VSBTOOLS_SOURCE")"
 MATTERGEN_COMMIT="$(git_commit "$MATTERGEN_SOURCE")"
+VSBTOOLS_BRANCH="$(git_branch "$VSBTOOLS_SOURCE")"
+MATTERGEN_BRANCH="$(git_branch "$MATTERGEN_SOURCE")"
 VSBTOOLS_DIRTY="$(git_dirty "$VSBTOOLS_SOURCE")"
 MATTERGEN_DIRTY="$(git_dirty "$MATTERGEN_SOURCE")"
 
@@ -296,6 +369,8 @@ ENV_FILE="$ENV_ROOT/workflow_env.sh"
 {
     printf '#!/usr/bin/env bash\n'
     printf 'export VSBTOOLS_INSTALL_MODE=%q\n' "$INSTALL_MODE"
+    printf 'export VSBTOOLS_REF=%q\n' "$VSBTOOLS_REF"
+    printf 'export MATTERGEN_REF=%q\n' "$MATTERGEN_REF"
     printf 'export VSBTOOLS_SOURCE=%q\n' "$VSBTOOLS_SOURCE"
     printf 'export MATTERGEN_SOURCE=%q\n' "$MATTERGEN_SOURCE"
     printf 'export VSBTOOLS_VENV=%q\n' "$VSBTOOLS_VENV"
@@ -317,9 +392,13 @@ cat > "$MANIFEST" <<EOF
 {
   "install_mode": "$INSTALL_MODE",
   "vsbtools_source": "$VSBTOOLS_SOURCE",
+  "vsbtools_requested_ref": "$VSBTOOLS_REF",
+  "vsbtools_branch": "$VSBTOOLS_BRANCH",
   "vsbtools_commit": "$VSBTOOLS_COMMIT",
   "vsbtools_dirty": $VSBTOOLS_DIRTY,
   "mattergen_source": "$MATTERGEN_SOURCE",
+  "mattergen_requested_ref": "$MATTERGEN_REF",
+  "mattergen_branch": "$MATTERGEN_BRANCH",
   "mattergen_commit": "$MATTERGEN_COMMIT",
   "mattergen_dirty": $MATTERGEN_DIRTY,
   "vsbtools_python": "$VSBTOOLS_PYTHON",
@@ -347,8 +426,8 @@ Install mode:
   $INSTALL_MODE
 
 Live sources:
-  VSBTools:  $VSBTOOLS_SOURCE
-  MatterGen: $MATTERGEN_SOURCE
+  VSBTools:  $VSBTOOLS_SOURCE ($VSBTOOLS_BRANCH, $VSBTOOLS_COMMIT)
+  MatterGen: $MATTERGEN_SOURCE ($MATTERGEN_BRANCH, $MATTERGEN_COMMIT)
 
 Virtual environments:
   VSBTools:  $VSBTOOLS_VENV

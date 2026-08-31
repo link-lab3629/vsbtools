@@ -143,6 +143,26 @@ The installer creates persistent environments for VSBTools,
 scout-matter/MatterGen, and GRACE. Running it again updates those environments
 from the current source checkouts.
 
+To install selected branches, add one or both ref options:
+
+```bash
+bash "$CODE_ROOT/vsbtools/install_vsbtools_mattergen.sh" \
+  --vsbtools-source "$CODE_ROOT/vsbtools" \
+  --mattergen-source "$CODE_ROOT/scout-matter" \
+  --env-root "$CODE_ROOT/workflow-env" \
+  --python "$PYTHON_FOR_SETUP" \
+  --vsbtools-ref VSBTOOLS_BRANCH \
+  --mattergen-ref MATTERGEN_BRANCH \
+  --fetch \
+  --editable
+```
+
+The ref values may be branch names, tags, or commit hashes. `--fetch` is
+optional; include it to fetch `origin` first and fast-forward an existing local
+branch when possible. Ref selection requires a clean checkout and stops before
+changing branches when tracked, staged, or untracked files are present. The
+resolved branches and commits are saved in `installation_manifest.json`.
+
 ### 1.1 Editable installs and the regular alternative
 
 `--editable` installs VSBTools from `$CODE_ROOT/vsbtools` and MatterGen from
