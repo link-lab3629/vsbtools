@@ -1,8 +1,9 @@
 # MatterGen to VSBTools: generation and analysis
 
-This procedure installs `vsbtools` and `scout-matter` from GitHub, generates
-matched unguided and guided batches, and produces processed datasets, summary
-tables, Pareto fronts, and histogram or KDE figures.
+This procedure installs `vsbtools` and `scout-matter`/MatterGen from GitHub,
+installs GRACE through the `tensorpotential` package, generates matched unguided
+and guided batches, and produces processed datasets, summary tables, Pareto
+fronts, and histogram or KDE figures.
 
 The examples use `Ni-Pd-H` with target `CN([Pd,Ni]-H) = 6`. Change the chemical
 system, species, target, GPU number, and guidance weights for the experiment.
@@ -44,7 +45,42 @@ If the Xcode command reports that the command-line tools are already installed,
 continue with the next step. Conda users can skip the Homebrew Python install;
 the Conda environment below supplies Python 3.11 and Git.
 
-### 0.2 Create one bootstrap environment
+### 0.2 Separate installed software from generated work
+
+Choose a parent directory and define one project root plus separate software
+and work roots for the current terminal session:
+
+```bash
+export PROJECT_ROOT="$PWD/mattergen-project"
+export CODE_ROOT="$PROJECT_ROOT/code"
+export WORK_ROOT="$PROJECT_ROOT/work"
+
+mkdir -p "$CODE_ROOT" "$WORK_ROOT/configs" "$WORK_ROOT/logs"
+```
+
+The guide uses this layout throughout:
+
+```text
+mattergen-project/
+├── code/                         # software: source code and environments
+│   ├── vsbtools/                 # Git checkout and editable source
+│   ├── scout-matter/             # Git checkout and editable MatterGen source
+│   ├── bootstrap-venv/           # present when the venv option is used
+│   └── workflow-env/             # vsbtools, scout-matter, and GRACE envs
+└── work/                         # experiment inputs and generated results
+    ├── configs/
+    ├── logs/
+    ├── raw-generations/
+    ├── repeated-guided/
+    └── analysis-run/
+```
+
+`CODE_ROOT` contains reinstallable software. `WORK_ROOT` contains the batches
+and analyses to preserve. Commands may be run from any directory after these
+absolute variables are defined. In a new terminal, set `PROJECT_ROOT` to this
+same absolute directory and repeat the `CODE_ROOT` and `WORK_ROOT` exports.
+
+### 0.3 Create one bootstrap environment
 
 Choose either standard Python `venv` or Conda. This bootstrap environment only
 provides the Python interpreter used by the installer.
@@ -52,15 +88,12 @@ provides the Python interpreter used by the installer.
 #### Option A: `python3 -m venv`
 
 ```bash
-mkdir mattergen-work
-cd mattergen-work
-
 # On macOS with Homebrew, use python3.11 here if python3 is another version.
-python3 -m venv bootstrap-venv
-source bootstrap-venv/bin/activate
+python3 -m venv "$CODE_ROOT/bootstrap-venv"
+source "$CODE_ROOT/bootstrap-venv/bin/activate"
 python -m pip install --upgrade pip
 
-export PYTHON_FOR_SETUP="$PWD/bootstrap-venv/bin/python"
+export PYTHON_FOR_SETUP="$CODE_ROOT/bootstrap-venv/bin/python"
 ```
 
 #### Option B: Conda
@@ -68,9 +101,6 @@ export PYTHON_FOR_SETUP="$PWD/bootstrap-venv/bin/python"
 Use this option when Conda or Miniconda is already installed:
 
 ```bash
-mkdir mattergen-work
-cd mattergen-work
-
 conda create -n mattergen-bootstrap python=3.11 pip git -y
 conda activate mattergen-bootstrap
 
@@ -84,50 +114,132 @@ git --version
 "$PYTHON_FOR_SETUP" --version
 ```
 
-If the standard `python3` command is newer than the workflow supports, the
-repository installer uses it to bootstrap a managed Python 3.11 automatically.
+If the standard `python3` command is newer than the workflow supports, use the
+Python 3.11 venv or Conda option above and pass that interpreter to the
+installer.
 
 The next installer creates three independent environments under
-`workflow-env/venvs/`: `vsbtools`, `scout-matter`, and `grace`. Keep the
-bootstrap environment active only while running the installer.
+`$CODE_ROOT/workflow-env/venvs/`: `vsbtools`, `scout-matter`, and `grace`. Keep
+the bootstrap environment active only while running the installer.
 
-## 1. Install from GitHub
+## 1. Install software under `CODE_ROOT`
 
-Continue from the `mattergen-work` directory created in Section 0:
+Clone both repositories into the software tree, then run the reusable installer
+located at the VSBTools repository root:
 
 ```bash
-git clone https://github.com/link-lab3629/vsbtools.git
-git clone https://github.com/link-lab3629/scout-matter.git
+git clone https://github.com/link-lab3629/vsbtools.git "$CODE_ROOT/vsbtools"
+git clone https://github.com/link-lab3629/scout-matter.git "$CODE_ROOT/scout-matter"
 
-VSBTOOLS_REPO_URL="$PWD/vsbtools" \
-SCOUT_MATTER_REPO_URL="$PWD/scout-matter" \
-bash "$PWD/vsbtools/vsbtools/materials_dataset/Examples/setup_reproducibility_envs.sh" \
-  --root "$PWD/workflow-env" \
-  --run-root "$PWD/analysis-run" \
+bash "$CODE_ROOT/vsbtools/install_vsbtools_mattergen.sh" \
+  --vsbtools-source "$CODE_ROOT/vsbtools" \
+  --mattergen-source "$CODE_ROOT/scout-matter" \
+  --env-root "$CODE_ROOT/workflow-env" \
   --python "$PYTHON_FOR_SETUP" \
-  --no-launch
+  --editable
 ```
 
-At each environment prompt, press Enter. The installer creates compatible
-environments for VSBTools, scout-matter/MatterGen, and GRACE. For a reproducible
-installation, add `--vsbtools-ref COMMIT` and `--scout-matter-ref COMMIT`.
+The installer creates persistent environments for VSBTools,
+scout-matter/MatterGen, and GRACE. Running it again updates those environments
+from the current source checkouts.
+
+### 1.1 Editable installs and the regular alternative
+
+`--editable` installs VSBTools from `$CODE_ROOT/vsbtools` and MatterGen from
+`$CODE_ROOT/scout-matter`. The environments contain their dependencies and
+console scripts, while Python imports the source files directly from these two
+Git checkouts. Restart the Python process or Jupyter kernel after editing source
+code; rebuilding the environments is usually unnecessary.
+
+Verify the live source paths:
+
+```bash
+"$CODE_ROOT/workflow-env/venvs/vsbtools/bin/python" -c \
+  "import vsbtools; print(vsbtools.__file__)"
+"$CODE_ROOT/workflow-env/venvs/scout-matter/bin/python" -c \
+  "import mattergen; print(mattergen.__file__)"
+```
+
+The first path should be under `$CODE_ROOT/vsbtools`; the second should be under
+`$CODE_ROOT/scout-matter`.
+
+Editable installations are mutable. Uncommitted edits and later branch changes
+alter subsequent runs, and a commit hash alone cannot reproduce uncommitted
+content. Before archiving an experiment, commit the relevant changes or save a
+patch together with `WORK_ROOT`.
+
+For a stable installed snapshot, first check out the desired clean commits and
+use `--regular` with a separate environment root:
+
+```bash
+bash "$CODE_ROOT/vsbtools/install_vsbtools_mattergen.sh" \
+  --vsbtools-source "$CODE_ROOT/vsbtools" \
+  --mattergen-source "$CODE_ROOT/scout-matter" \
+  --env-root "$CODE_ROOT/workflow-env-regular" \
+  --python "$PYTHON_FOR_SETUP" \
+  --regular
+```
+
+The regular installation copies package code into its environments, so later
+edits in the checkouts do not affect it. Record the commits printed in
+`installation_manifest.json`. For reproduction of the packaged demonstration
+notebook itself, use the separate
+`vsbtools/materials_dataset/Examples/setup_reproducibility_envs.sh`; that script
+creates contained source copies, runtime state, and notebook outputs for its
+specific reproducibility task.
+
+### 1.2 Install and verify GRACE/tensorpotential
+
+GRACE is provided through the `tensorpotential` package. The reusable installer
+creates `$CODE_ROOT/workflow-env/venvs/grace` and runs the equivalent of:
+
+```bash
+"$CODE_ROOT/workflow-env/venvs/grace/bin/python" -m pip install "ase<3.26" tensorpotential
+```
+
+Verify that the separate GRACE interpreter can load its calculator:
+
+```bash
+"$CODE_ROOT/workflow-env/venvs/grace/bin/python" -c \
+  "import tensorpotential.calculator; print('GRACE/tensorpotential import OK')"
+```
+
+The first energy-estimation run may download the selected GRACE model. Keep
+internet access available or provide an already cached model.
+
+If the bundled setup script is not used, create the GRACE environment manually:
+
+```bash
+"$PYTHON_FOR_SETUP" -m venv "$CODE_ROOT/workflow-env/venvs/grace"
+export GRACE_PYTHON="$CODE_ROOT/workflow-env/venvs/grace/bin/python"
+
+"$GRACE_PYTHON" -m pip install --upgrade pip
+"$GRACE_PYTHON" -m pip install "ase<3.26" tensorpotential
+"$GRACE_PYTHON" -c \
+  "import tensorpotential.calculator; print('GRACE/tensorpotential import OK')"
+```
+
+The generated `workflow_env.sh` exports `GRACE_PYTHON`. Source that file when
+configuring another shell manually.
 
 The main executables are now:
 
 ```text
-workflow-env/venvs/scout-matter/bin/mattergen-generate
-workflow-env/venvs/vsbtools/bin/python
-workflow-env/run_reproducibility_notebook.sh
+$CODE_ROOT/workflow-env/venvs/scout-matter/bin/mattergen-generate
+$CODE_ROOT/workflow-env/venvs/vsbtools/bin/python
+$CODE_ROOT/workflow-env/venvs/grace/bin/python
+$CODE_ROOT/workflow-env/workflow_env.sh
+$CODE_ROOT/workflow-env/launch_jupyter.sh
 ```
 
-## 2. Generate three matched batches
+## 2. Generate three matched batches under `WORK_ROOT`
 
 Activate scout-matter and define one output root:
 
 ```bash
-source "$PWD/workflow-env/venvs/scout-matter/bin/activate"
+source "$CODE_ROOT/workflow-env/venvs/scout-matter/bin/activate"
 export SYSTEM="Ni-Pd-H"
-export RAW_ROOT="$PWD/raw-generations/$SYSTEM"
+export RAW_ROOT="$WORK_ROOT/raw-generations/$SYSTEM"
 mkdir -p "$RAW_ROOT"
 ```
 
@@ -200,13 +312,161 @@ The weights above are starting values. Ranked-softplus has a different loss
 scale from sigmoid mean coordination and should be calibrated independently.
 If a batch runs out of GPU memory, reduce `--batch_size`.
 
-## 3. Postprocess the three batches
+### 2.4 Generate an ensemble with `multiple_runs.sh`
 
-Launch the configured notebook environment:
+Use scout-matter's root-level `multiple_runs.sh` for many independent guided
+runs. It invokes `mattergen-generate` once per run, retries CUDA out-of-memory
+failures with a smaller batch, records run durations, and combines the
+successful structures into one aggregate `.extxyz` file.
+
+Activate the scout-matter environment from `CODE_ROOT`, then enter its source
+repository because `multiple_runs.sh` lives at the repository root:
 
 ```bash
+source "$CODE_ROOT/workflow-env/venvs/scout-matter/bin/activate"
+cd "$CODE_ROOT/scout-matter"
+
+./multiple_runs.sh --help
+```
+
+The following command repeats the mean group-coordination generation from
+Section 2.3 fifty times:
+
+```bash
+./multiple_runs.sh \
+  --batch-size 20 \
+  --num-batches 1 \
+  --runs 50 \
+  --system Ni-Pd-H \
+  --guidance "{'mean_coordination': {'mode':'huber', 'alpha':3.0, '[Pd,Ni]-H':6}}" \
+  --forward-weight 0.01 \
+  --backward-weight 0.01 \
+  --normalize true \
+  --self-rec-steps 3 \
+  --back-step 2 \
+  --algorithm 1 \
+  --diffusion-guidance-factor 2.0 \
+  --gpu 0 \
+  --base-dir "$WORK_ROOT/repeated-guided" \
+  --log-file "$WORK_ROOT/logs/group-coordination.log"
+```
+
+Append `--dry-run` first to inspect every generated `mattergen-generate`
+command without starting generation. The important size controls are:
+
+- `--batch-size`: structures generated in each batch.
+- `--num-batches`: batches generated within each independent run.
+- `--runs`: number of independent runs.
+
+For ranked-neighbor softplus guidance, either change `--guidance` in the command
+above or use a YAML config. Create
+`$WORK_ROOT/configs/repeated-ranked-softplus.yaml` with:
+
+```yaml
+batch_size: 20
+num_batches: 1
+runs: 50
+system: Ni-Pd-H
+
+guidance:
+  type: ranked_coordination
+  parameters:
+    margin: 0.05
+    temperature: 0.10
+    alpha: 2.0
+    cn_tolerance: 0.4
+    cn_temperature: 0.05
+    satisfaction_weight: 1.0
+    "[Pd,Ni]-H": 6
+  settings:
+    forward_weight: 0.01
+    backward_weight: 0.01
+    normalize: true
+    self_rec_steps: 3
+    back_step: 2
+    algorithm: 1
+
+diffusion_guidance_factor: 2.0
+gpu: 0
+
+oom_retries: 30
+oom_backoff_percent: 80
+min_batch_size: 1
+oom_wait_seconds: 10
+
+# These paths lead from code/scout-matter into the separate work tree.
+base_dir: ../../work/repeated-guided
+log_file: ../../work/logs/ranked-softplus.log
+dry_run: false
+```
+
+Run the YAML configuration as the only command-line option:
+
+```bash
+./multiple_runs.sh --config "$WORK_ROOT/configs/repeated-ranked-softplus.yaml"
+```
+
+On an out-of-memory failure, the script retries the same run with
+`ceil(current_batch_size * oom_backoff_percent / 100)`. It stops after
+`oom_retries`, or when another reduction would cross `min_batch_size`. Therefore,
+record the `final_batch_size` column when comparing ensembles whose retries may
+have produced different numbers of structures.
+
+Results are nested under a path derived from the system, guidance parameters,
+and guidance settings:
+
+```text
+$WORK_ROOT/repeated-guided/results/Ni-Pd-H/<guidance>/<parameters>/<settings>/
+├── generated_crystals.extxyz    # aggregate of every successful run
+├── durations.csv                # duration, final batch size, and attempts
+├── run_1/
+│   ├── generated_crystals.extxyz
+│   ├── input_parameters.txt
+│   └── attempt_1.log
+├── run_2/
+│   └── ...
+└── run_50/
+    └── ...
+```
+
+For the pipeline in Section 3, collect the individual run directories:
+
+```python
+import os
+from pathlib import Path
+
+WORK_ROOT = Path(os.environ["WORK_ROOT"])
+REPEATED_ROOT = WORK_ROOT / "repeated-guided"
+generation_dirs = sorted(
+    path.parent
+    for path in REPEATED_ROOT.glob("results/Ni-Pd-H/**/run_*/input_parameters.txt")
+)
+```
+
+Process each `run_N/` once. The parent settings directory contains the aggregate
+`generated_crystals.extxyz`; processing that file as an additional batch would
+duplicate the same structures.
+
+## 3. Postprocess the batches under `WORK_ROOT`
+
+Copy the packaged scenario into the work tree once, then launch the configured
+notebook environment. Customize the copy under `WORK_ROOT/configs` for this
+experiment:
+
+```bash
+if [[ ! -f "$WORK_ROOT/configs/scenario_no_relax.yaml" ]]; then
+  cp "$CODE_ROOT/vsbtools/vsbtools/materials_dataset/Examples/scenario_no_relax.yaml" \
+    "$WORK_ROOT/configs/scenario_no_relax.yaml"
+fi
+
 deactivate
-"$PWD/workflow-env/run_reproducibility_notebook.sh"
+mkdir -p "$WORK_ROOT/analysis-run"
+if [[ ! -f "$WORK_ROOT/analysis-run/mg_generation_postprocessing_pipeline.ipynb" ]]; then
+  cp "$CODE_ROOT/vsbtools/vsbtools/materials_dataset/Examples/mg_generation_postprocessing_pipeline.ipynb" \
+    "$WORK_ROOT/analysis-run/mg_generation_postprocessing_pipeline.ipynb"
+fi
+cd "$WORK_ROOT/analysis-run"
+"$CODE_ROOT/workflow-env/launch_jupyter.sh"
 ```
 
 Open `mg_generation_postprocessing_pipeline.ipynb`, run its Sections 0 and 1,
@@ -216,18 +476,16 @@ different working directory.
 ### 3.1 Run the scenario pipeline
 
 ```python
-from importlib.resources import files
+import os
 from pathlib import Path
 
 from vsbtools.materials_dataset.analysis.scenario_pipeline import process_generation_dir
 
-WORK = Path("/absolute/path/to/mattergen-work")
-RAW_ROOT = WORK / "raw-generations" / "Ni-Pd-H"
-PROCESSED_ROOT = WORK / "analysis-run" / "processed"
-FIGURE_ROOT = WORK / "analysis-run" / "figures"
-SCENARIO = Path(str(files("vsbtools.materials_dataset").joinpath(
-    "Examples", "scenario_no_relax.yaml"
-)))
+WORK_ROOT = Path(os.environ["WORK_ROOT"])
+RAW_ROOT = WORK_ROOT / "raw-generations" / "Ni-Pd-H"
+PROCESSED_ROOT = WORK_ROOT / "analysis-run" / "processed"
+FIGURE_ROOT = WORK_ROOT / "analysis-run" / "figures"
+SCENARIO = WORK_ROOT / "configs" / "scenario_no_relax.yaml"
 
 PROCESSED_ROOT.mkdir(parents=True, exist_ok=True)
 FIGURE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -498,26 +756,44 @@ for repo_no, repo in enumerate(repos, start=1):
         plt.close(ax.figure)
 ```
 
-## 4. Expected outputs
+## 4. Expected directory layout
 
 ```text
-analysis-run/
-├── processed/Ni-Pd-H/<generation>/
-│   └── <stage>/
-│       ├── manifest.yaml, data.csv, POSCARS/
-│       ├── summary.csv, table.txt
-│       ├── *_pf_1.csv, *_pf_1_table.txt
-│       └── *_pf_1/                 # Pareto-front POSCAR files
-└── figures/
-    ├── Ni-Pd-H_coordination_kde.pdf
-    └── repo_*_pareto.pdf
+$PROJECT_ROOT/
+├── code/                              # installed software; CODE_ROOT
+│   ├── vsbtools/                      # editable VSBTools source checkout
+│   ├── scout-matter/                  # editable MatterGen source checkout
+│   └── workflow-env/venvs/            # executable environments
+│       ├── vsbtools/
+│       ├── scout-matter/
+│       └── grace/
+└── work/                              # experiment data; WORK_ROOT
+    ├── configs/
+    │   ├── scenario_no_relax.yaml
+    │   └── repeated-ranked-softplus.yaml
+    ├── logs/
+    │   ├── group-coordination.log
+    │   └── ranked-softplus.log
+    ├── raw-generations/Ni-Pd-H/
+    │   ├── unguided/
+    │   ├── ranked-softplus/
+    │   └── group-coordination/
+    ├── repeated-guided/results/Ni-Pd-H/
+    │   └── <guidance>/<parameters>/<settings>/
+    │       ├── generated_crystals.extxyz
+    │       ├── durations.csv
+    │       └── run_N/
+    └── analysis-run/
+        ├── processed/Ni-Pd-H/<generation>/<stage>/
+        │   ├── manifest.yaml, data.csv, POSCARS/
+        │   ├── summary.csv, table.txt
+        │   ├── *_pf_1.csv, *_pf_1_table.txt
+        │   └── *_pf_1/                # Pareto-front POSCAR files
+        └── figures/
+            ├── Ni-Pd-H_coordination_kde.pdf
+            └── repo_*_pareto.pdf
 ```
 
-Keep the raw generation directories, processed repositories, scenario YAML,
-Git commit hashes, and final figures together. They are the minimum inputs
-needed to reproduce the analysis.
-
-For many repeated guided runs, use scout-matter's `multiple_runs.sh`. Process
-its individual `run_N/` directories; the parent directory also contains an
-aggregate `generated_crystals.extxyz`, so processing both would duplicate
-structures.
+Keep `WORK_ROOT` together with the scenario YAML and the Git commit hashes from
+both repositories. These are the inputs needed to reproduce the analysis with a
+fresh `CODE_ROOT` installation.

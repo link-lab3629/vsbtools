@@ -15,6 +15,11 @@ Setup script:
 setup_reproducibility_envs.sh
 ```
 
+This script is dedicated to reproducing the packaged notebook in a contained
+workspace. For persistent editable environments used across projects, run the
+repository-root [`install_vsbtools_mattergen.sh`](../../../install_vsbtools_mattergen.sh)
+instead.
+
 The notebook needs three Python environments:
 
 - `vsbtools`: the Jupyter/kernel environment.
@@ -41,7 +46,7 @@ explicitly. In an interactive terminal it asks whether to reuse existing virtual
 environments for `vsbtools`, `scout-matter`, and GRACE. Press Enter at a prompt
 to create that environment under `./vsbtools_reproducibility_env`.
 
-Both MatterGen setup modes are supported:
+MatterGen environment creation and reuse are both supported:
 
 - Press Enter at the `scout-matter/MatterGen` prompt to create and install a
   contained environment.
@@ -119,8 +124,8 @@ For a fixed reproducibility run, pin repository refs:
 bash setup_reproducibility_envs.sh \
   --root ./vsbtools_reproducibility_env \
   --run-root ./vsbtools_reproducibility_run \
-  --vsbtools-ref <commit-or-tag> \
-  --scout-matter-ref <commit-or-tag>
+  --vsbtools-ref VSBTOOLS_COMMIT_OR_TAG \
+  --scout-matter-ref SCOUT_MATTER_COMMIT_OR_TAG
 ```
 
 If an older copy of this script failed while checking out a missing branch, rerun

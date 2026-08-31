@@ -102,6 +102,22 @@ preserves generation metadata and uses it to analyze guidance-loss
 distributions, target-property distributions, structural descriptors, Pareto
 fronts, and reproducibility metrics.
 
+For an installation reused across generation and analysis projects, keep the
+VSBTools and scout-matter checkouts beside each other and run the repository-root
+installer:
+
+```bash
+git clone https://github.com/link-lab3629/scout-matter.git ../scout-matter
+bash ./install_vsbtools_mattergen.sh \
+  --mattergen-source ../scout-matter \
+  --env-root ../workflow-env \
+  --python python3.11 \
+  --editable
+```
+
+See the [end-to-end MatterGen guide](vsbtools/materials_dataset/Doc/MatterGen_End_to_End.md)
+for generation, postprocessing, Pareto fronts, and distribution plots.
+
 A packaged reproducibility pipeline is provided for the MatterGen guidance
 analysis workflow. It starts from the raw-generation archives in
 `Examples/raw_generations`, postprocesses them into staged datasets, builds
@@ -119,7 +135,8 @@ The setup script creates a contained workspace with three virtual environments:
 `vsbtools`, `scout-matter`/MatterGen, and GRACE/`tensorpotential`. Notebook
 outputs are written to a separate run directory. Each prompt accepts an existing
 venv root, including an editable MatterGen environment; pressing Enter creates
-the corresponding contained environment.
+the corresponding contained environment. This script is specific to reproducing
+the packaged notebook.
 
 ```bash
 bash vsbtools/materials_dataset/Examples/setup_reproducibility_envs.sh \
