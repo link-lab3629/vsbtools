@@ -415,9 +415,10 @@ cd "$CODE_ROOT/scout-matter"
 ./multiple_runs.sh --help
 ```
 
-This is a separate setting from the ranked-softplus generation group above, so it uses
-`repeated-guided/gen_2`. All fifty runs share the same mean group-coordination
-settings; `run_N` only identifies the independent repeat.
+This is a separate setting from the ranked-softplus generation group above, so
+it uses `repeated-guided/gen_2`. All fifty runs share the same
+group-coordination guidance settings; `run_N` only identifies the
+independent repeat.
 
 ```bash
 GEN_ROOT="$RAW_ROOT/repeated-guided/gen_2"
@@ -426,7 +427,7 @@ GEN_ROOT="$RAW_ROOT/repeated-guided/gen_2"
   --num-batches 1 \
   --runs 50 \
   --system Ni-Pd-H \
-  --guidance "{'mean_coordination': {'mode':'huber', 'alpha':3.0, '[Pd,Ni]-H':6}}" \
+  --guidance "{'group_coordination': {'mode':'huber', 'alpha':3.0, '[Pd,Ni]-H':6}}" \
   --forward-weight 0.01 \
   --backward-weight 0.01 \
   --normalize true \
@@ -446,10 +447,12 @@ controls are:
 - `--num-batches`: batches generated within each independent run.
 - `--runs`: number of independent runs.
 
-`group_coordination` remains a compatibility alias for `mean_coordination`.
-The same `gen_2` setting can be supplied through YAML. Choose this YAML command
-or the CLI command above; use a new `gen_N` if the guidance or another
-meaningful setting changes.
+`group_coordination` and `mean_coordination` are distinct registered
+guidance types. This example uses `group_coordination` because one target is
+defined for the pooled central-species group `[Pd,Ni]`. The same `gen_2`
+setting can be supplied through YAML. Choose this YAML command or the CLI
+command above; use a new `gen_N` if the guidance type, its parameters,
+or another meaningful setting changes.
 
 ```yaml
 batch_size: 20
@@ -458,7 +461,7 @@ runs: 50
 system: Ni-Pd-H
 
 guidance:
-  type: mean_coordination
+  type: group_coordination
   parameters:
     mode: huber
     alpha: 3.0
