@@ -275,6 +275,15 @@ names only. For a clean committed checkout, the commit files and
 later be reapplied with, for example,
 `git -C "$CODE_ROOT/vsbtools" apply "$PROVENANCE_ROOT/vsbtools.patch"`.
 
+At the end of the experiment, archive the complete work tree, including
+`provenance/`:
+
+```bash
+WORK_ARCHIVE="${WORK_ROOT%/}.tar.gz"
+tar -czf "$WORK_ARCHIVE" \
+  -C "$(dirname "$WORK_ROOT")" "$(basename "$WORK_ROOT")"
+```
+
 ### 1.2 Install and verify GRACE/tensorpotential
 
 GRACE is provided through the `tensorpotential` package. The reusable installer
