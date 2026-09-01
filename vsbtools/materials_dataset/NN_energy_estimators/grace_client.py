@@ -5,6 +5,7 @@ from pathlib import Path
 from ase.io import read, write
 from ..external_paths import (
     ExternalPathResolutionError,
+    managed_sibling_venv,
     python_executable_from_venv,
     python_import_validator,
     resolve_external_path,
@@ -29,6 +30,8 @@ def resolve_grace_model(grace_model: str | None = None) -> str:
 
 
 def _resolve_grace_python(*, prompt: bool, explicit_path=None) -> Path | None:
+    if explicit_path is None:
+        explicit_path = managed_sibling_venv("grace")
     return resolve_external_path(
         name="GRACE Python environment",
         config_key="grace_python",

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
+
+from .external_paths import managed_sibling_venv
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,7 @@ class NotebookExternalEnvironment:
 def _optional_path(value: str | Path | None) -> Path | None:
     if value in (None, ""):
         return None
-    path = Path(value).expanduser().resolve()
+    path = Path(os.path.abspath(Path(value).expanduser()))
     if not path.exists():
         raise FileNotFoundError(path)
     return path
@@ -57,18 +58,6 @@ def _python_output(python: Path, code: str, description: str) -> Path:
     return path
 
 
-def _managed_sibling_venv(name: str) -> Path | None:
-    """Find a sibling venv created by the reusable workflow installer."""
-
-    active_venv = Path(sys.prefix).expanduser()
-    if active_venv.name != "vsbtools" or active_venv.parent.name != "venvs":
-        return None
-    candidate = active_venv.parent / name
-    if not (candidate / "pyvenv.cfg").is_file():
-        return None
-    return candidate
-
-
 def _mattergen_paths(value: str | Path | None) -> tuple[Path | None, Path | None]:
     path = _optional_path(value)
     if path is None:
@@ -76,7 +65,7 @@ def _mattergen_paths(value: str | Path | None) -> tuple[Path | None, Path | None
         site_packages = _optional_path(os.environ.get("SCOUT_MATTER_SITE_PACKAGES"))
         if import_root is not None or site_packages is not None:
             return import_root, site_packages
-        managed_venv = _managed_sibling_venv("scout-matter")
+        managed_venv = managed_sibling_venv("scout-matter")
         if managed_venv is None:
             return None, None
         path = managed_venv
@@ -111,9 +100,9 @@ def _mattergen_paths(value: str | Path | None) -> tuple[Path | None, Path | None
 def _grace_python(value: str | Path | None) -> Path | None:
     path = _optional_path(value)
     if path is None:
-        path = _optional_path(os.environ.get("GRACE_PYTHON"))
+        path = _optional_path(managed_sibling_venv("grace"))
         if path is None:
-            path = _managed_sibling_venv("grace")
+            path = _optional_path(os.environ.get("GRACE_PYTHON"))
         if path is None:
             return None
     if path.is_dir():

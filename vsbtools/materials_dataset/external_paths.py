@@ -20,6 +20,18 @@ CONFIG_ENV_VAR = "VSBTOOLS_EXTERNAL_PATHS_CONFIG"
 PRESETS_ENV_VAR = "VSBTOOLS_EXTERNAL_PATHS_PRESETS"
 
 
+def managed_sibling_venv(name: str, prefix: str | Path | None = None) -> Path | None:
+    """Find a sibling venv created by the reusable workflow installer."""
+
+    active_venv = Path(prefix or sys.prefix).expanduser()
+    if active_venv.name != "vsbtools" or active_venv.parent.name != "venvs":
+        return None
+    candidate = active_venv.parent / name
+    if not (candidate / "pyvenv.cfg").is_file():
+        return None
+    return candidate
+
+
 def default_config_path() -> Path:
     return Path(os.environ.get(CONFIG_ENV_VAR, "~/.config/vsbtools/external_paths.json")).expanduser()
 
