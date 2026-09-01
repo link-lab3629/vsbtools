@@ -142,7 +142,7 @@ bash "$CODE_ROOT/vsbtools/install_vsbtools_mattergen.sh" \
   --mattergen-source "$CODE_ROOT/scout-matter" \
   --env-root "$CODE_ROOT/workflow-env" \
   --python "$PYTHON_FOR_SETUP" \
-  --vsbtools-ref VSBTOOLS_BRANCH \
+  --vsbtools-ref "linklab-installation-procedure" \
   --mattergen-ref MATTERGEN_BRANCH \
   --fetch \
   --editable
@@ -295,10 +295,10 @@ changes, especially the guidance objective or target.
 
 There are two ways to repeat one setting:
 
-| Output | How it is produced | Meaning |
-| --- | --- | --- |
-| `batch_N/` | Separate direct `mattergen-generate` invocations | One manually named repeat; keep the invocation settings identical. |
-| `results/.../run_N/` | `multiple_runs.sh --runs N` | One independent MatterGen invocation per run, with OOM retry handling. |
+| Output               | How it is produced                               | Meaning                                                                |
+| -------------------- | ------------------------------------------------ | ---------------------------------------------------------------------- |
+| `batch_N/`           | Separate direct `mattergen-generate` invocations | One manually named repeat; keep the invocation settings identical.     |
+| `results/.../run_N/` | `multiple_runs.sh --runs N`                      | One independent MatterGen invocation per run, with OOM retry handling. |
 
 The direct MatterGen option `--num_batches` controls batches inside one
 invocation and does not create a new generation setting. `batch_N` and `run_N`
@@ -402,8 +402,8 @@ insufficient.
 
 Use scout-matter's root-level `multiple_runs.sh` for independent repeats of one
 guided setting. It invokes `mattergen-generate` per run, retries CUDA
-out-of-memory failures with a smaller batch, records durations, and writes an
-aggregate `.extxyz`.
+out-of-memory failures with a smaller batch, and records durations. Each run
+keeps its own output under `run_N/`.
 
 Activate the selected MatterGen environment and enter the source repository;
 `multiple_runs.sh` is at its root:
@@ -509,7 +509,6 @@ derived from the system, guidance parameters, and settings:
 
 ```text
 $RAW_ROOT/repeated-guided/gen_2/results/Ni-Pd-H/<guidance>/<parameters>/<settings>/
-├── generated_crystals.extxyz    # aggregate of every successful run
 ├── durations.csv                # duration, final batch size, and attempts
 ├── run_1/
 │   ├── generated_crystals.extxyz
@@ -522,85 +521,34 @@ $RAW_ROOT/repeated-guided/gen_2/results/Ni-Pd-H/<guidance>/<parameters>/<setting
 ```
 
 For a `multiple_runs.sh` generation, process each `run_N/` directory once. The
-parent settings directory contains an aggregate `generated_crystals.extxyz`;
-do not process it as an additional batch.
+script does not create a parent `generated_crystals.extxyz`, so every generated
+structure appears only in its corresponding run output.
 
-### 2.3 Record provenance for each generation
+### 2.3 Automatic MatterGen provenance
 
-Place one provenance record in each `gen_N`. It covers all `batch_N` or `run_N`
-outputs inside that directory. Create a new `gen_N` whenever a meaningful
-generation setting changes.
+No separate provenance command is required. Every `mattergen-generate`
+invocation writes its record automatically into the same output directory:
 
-Define this helper once:
-
-```bash
-record_generation_provenance() {
-  local generation_root="$1"
-  local install_root="$2"
-  local vsbtools_source="$3"
-  local mattergen_source="$4"
-  local provenance_root="$generation_root/provenance"
-  local repo_name
-  local repo_root
-
-  mkdir -p "$provenance_root"
-  cp "$install_root/installation_manifest.json" \
-    "$provenance_root/installation_manifest.json"
-  cp "$install_root/workflow_env.sh" \
-    "$provenance_root/workflow_env.sh"
-
-  for repo_name in vsbtools scout-matter; do
-    if [[ "$repo_name" == vsbtools ]]; then
-      repo_root="$vsbtools_source"
-    else
-      repo_root="$mattergen_source"
-    fi
-    git -C "$repo_root" rev-parse HEAD \
-      > "$provenance_root/${repo_name}.commit"
-    git -C "$repo_root" status --short --branch \
-      > "$provenance_root/${repo_name}.status"
-    git -C "$repo_root" diff --binary HEAD \
-      > "$provenance_root/${repo_name}.patch"
-    git -C "$repo_root" ls-files --others --exclude-standard \
-      > "$provenance_root/${repo_name}.untracked"
-  done
-}
+```text
+<generation-output>/
+├── generated_crystals.extxyz
+├── input_parameters.txt
+└── provenance/
+    ├── generation.json
+    ├── mattergen.patch             # present when tracked source files differ from HEAD
+    └── mattergen.untracked.txt     # present when relevant source files are untracked
 ```
 
-After selecting the environment and branches, run the helper immediately before
-the first matching command in Section 2.2:
+`generation.json` records the complete generation arguments, command line,
+timestamp, MatterGen package and source location, Git commit and branch, Python
+runtime, platform, active environment, and installed package versions. For a
+regular installation outside a Git checkout, it records a SHA-256 digest of the
+installed MatterGen package tree.
 
-```bash
-# Non-guided generation
-GEN_ROOT="$RAW_ROOT/non_guided/gen_1"
-record_generation_provenance \
-  "$GEN_ROOT" \
-  "$INSTALL_ROOT" \
-  "$VSBTOOLS_SOURCE" \
-  "$MATTERGEN_SOURCE"
-
-# The ranked-softplus setting in repeated-guided/gen_1
-GEN_ROOT="$RAW_ROOT/repeated-guided/gen_1"
-record_generation_provenance \
-  "$GEN_ROOT" \
-  "$INSTALL_ROOT" \
-  "$VSBTOOLS_SOURCE" \
-  "$MATTERGEN_SOURCE"
-
-# The group-coordination setting in repeated-guided/gen_2
-# (use once before whichever invocation form you selected)
-GEN_ROOT="$RAW_ROOT/repeated-guided/gen_2"
-record_generation_provenance \
-  "$GEN_ROOT" \
-  "$INSTALL_ROOT" \
-  "$VSBTOOLS_SOURCE" \
-  "$MATTERGEN_SOURCE"
-```
-
-`installation_manifest.json` identifies the selected environment. The commit,
-status, patch, and untracked-file records capture the source state used for the
-generation, including tracked edits in an editable checkout. Use another
-checkout and environment root for a concurrent generation on another branch.
+With `multiple_runs.sh`, every `run_N/` receives its own provenance record. This
+also captures the actual batch size used after any out-of-memory retry. Keep the
+`provenance/` directory beside the generated structures when moving or
+archiving a generation.
 
 ### 2.4 Postprocess the selected generations
 
