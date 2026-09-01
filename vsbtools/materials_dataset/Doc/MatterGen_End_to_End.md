@@ -233,6 +233,48 @@ paths for VSBTools, MatterGen, and GRACE; it does not perform an installation.
 For an unambiguous launch, use the matching environment's
 `launch_jupyter.sh` or absolute interpreter paths.
 
+#### Record provenance before generation
+
+Before starting generation, save the installation manifest and the exact Git
+state under `WORK_ROOT`. The installer creates the manifest automatically; the
+following commands copy it and save commit hashes, status, and patches for
+both source repositories:
+
+```bash
+PROVENANCE_ROOT="$WORK_ROOT/provenance"
+mkdir -p "$PROVENANCE_ROOT"
+
+# Select the installation used for this experiment.
+INSTALL_ROOT="$CODE_ROOT/workflow-env"
+# For a regular snapshot, use instead:
+# INSTALL_ROOT="$CODE_ROOT/workflow-env-regular"
+
+cp "$INSTALL_ROOT/installation_manifest.json" \
+  "$PROVENANCE_ROOT/installation_manifest.json"
+cp "$INSTALL_ROOT/workflow_env.sh" \
+  "$PROVENANCE_ROOT/workflow_env.sh"
+
+for REPO_NAME in vsbtools scout-matter; do
+  REPO_ROOT="$CODE_ROOT/$REPO_NAME"
+  git -C "$REPO_ROOT" rev-parse HEAD \
+    > "$PROVENANCE_ROOT/${REPO_NAME}.commit"
+  git -C "$REPO_ROOT" status --short --branch \
+    > "$PROVENANCE_ROOT/${REPO_NAME}.status"
+  git -C "$REPO_ROOT" diff --binary HEAD \
+    > "$PROVENANCE_ROOT/${REPO_NAME}.patch"
+  git -C "$REPO_ROOT" ls-files --others --exclude-standard \
+    > "$PROVENANCE_ROOT/${REPO_NAME}.untracked"
+done
+```
+
+An empty `.patch` file means that there are no tracked changes. If an
+`.untracked` file is non-empty and those files affect the experiment, commit
+them or copy their contents into `provenance/` as well; the list records their
+names only. For a clean committed checkout, the commit files and
+`installation_manifest.json` are the essential records. The saved patches can
+later be reapplied with, for example,
+`git -C "$CODE_ROOT/vsbtools" apply "$PROVENANCE_ROOT/vsbtools.patch"`.
+
 ### 1.2 Install and verify GRACE/tensorpotential
 
 GRACE is provided through the `tensorpotential` package. The reusable installer
