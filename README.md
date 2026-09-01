@@ -115,6 +115,38 @@ bash ./install_vsbtools_mattergen.sh \
   --editable
 ```
 
+The MatterGen installer accepts Python 3.10 or 3.11 for the bootstrap
+interpreter. The standalone `vsbtools` package supports newer Python versions,
+but a Python 3.12-or-newer interpreter must not be passed to this installer.
+Check the selected interpreter before running it:
+
+```bash
+"$PYTHON_FOR_SETUP" --version
+```
+
+When using a bootstrap virtual environment, create it with an installed
+Python 3.10 or 3.11 executable, for example:
+
+```bash
+python3.11 -m venv "$CODE_ROOT/bootstrap-venv"
+source "$CODE_ROOT/bootstrap-venv/bin/activate"
+export PYTHON_FOR_SETUP="$CODE_ROOT/bootstrap-venv/bin/python"
+```
+
+In a multiline shell command, the backslash must be the final character on the
+line. The complete branch-selecting form is:
+
+```bash
+bash "$CODE_ROOT/vsbtools/install_vsbtools_mattergen.sh" \
+  --vsbtools-source "$CODE_ROOT/vsbtools" \
+  --mattergen-source "$CODE_ROOT/scout-matter" \
+  --env-root "$CODE_ROOT/workflow-env" \
+  --python "$PYTHON_FOR_SETUP" \
+  --vsbtools-ref linklab-installation-procedure \
+  --fetch \
+  --editable
+```
+
 Use `--vsbtools-ref BRANCH`, `--mattergen-ref BRANCH`, and optionally `--fetch`
 to select source branches during installation.
 
@@ -167,7 +199,9 @@ for stage_name, dataset in pipeline.run():
 
 ## Installation
 
-Python 3.10 or newer is required.
+Python 3.10 or newer is required for the standalone `vsbtools` package. The
+MatterGen workflow installer has the narrower Python 3.10/3.11 requirement
+described above.
 
 ```bash
 python3 -m pip install -e .
