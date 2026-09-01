@@ -149,6 +149,36 @@ bash "$CODE_ROOT/vsbtools/install_vsbtools_mattergen.sh" \
 Use `--vsbtools-ref BRANCH`, `--mattergen-ref BRANCH`, and optionally `--fetch`
 to select source branches during installation.
 
+### Choosing editable or regular installation
+
+If you want to try another branch and can reuse the current environment, use
+the same `workflow-env` with `--editable`. Select the branch with the ref
+options above, or switch the clean source checkouts manually, then restart the
+Python process or Jupyter kernel. Reinstall only when the branch changes its
+dependencies or installation metadata.
+
+Use `--regular` when the new experiment must have its own stable code snapshot
+while the existing editable environment remains available. Give it a separate
+environment root, and preferably separate source checkouts or Git worktrees if
+both experiments will run at the same time:
+
+```bash
+bash "$CODE_ROOT/vsbtools/install_vsbtools_mattergen.sh" \
+  --vsbtools-source "$CODE_ROOT/vsbtools-branch-b" \
+  --mattergen-source "$CODE_ROOT/scout-matter-branch-b" \
+  --env-root "$CODE_ROOT/workflow-env-branch-b" \
+  --python "$PYTHON_FOR_SETUP" \
+  --vsbtools-ref VSBTOOLS_BRANCH_B \
+  --mattergen-ref MATTERGEN_BRANCH_B \
+  --fetch \
+  --regular
+```
+
+Thus, switching branches in an existing editable setup and creating an
+independent regular snapshot are two different workflows. The `--regular`
+name means the ordinary non-editable `pip install` mode; it does not mean that
+every branch change requires a second installation.
+
 See the [end-to-end MatterGen guide](vsbtools/materials_dataset/Doc/MatterGen_End_to_End.md)
 for generation, postprocessing, Pareto fronts, and distribution plots.
 

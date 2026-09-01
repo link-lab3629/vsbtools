@@ -187,8 +187,11 @@ content. Before conducting an experiment, record the relevant commit hashes and
 save any uncommitted changes as a patch. Archive these provenance records
 together with `WORK_ROOT`.
 
-For a stable installed snapshot, first check out the desired clean commits and
-use `--regular` with a separate environment root:
+Use `--regular` only when the experiment needs an independent stable code
+snapshot. If you merely want to try another branch in the existing editable
+environment, select the branch with `--vsbtools-ref` and/or
+`--mattergen-ref`, keep `--editable`, and restart Python or Jupyter afterward.
+For an independent snapshot, use a separate environment root:
 
 ```bash
 bash "$CODE_ROOT/vsbtools/install_vsbtools_mattergen.sh" \
