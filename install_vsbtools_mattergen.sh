@@ -43,6 +43,10 @@ Options:
   --no-grace               Skip the GRACE/tensorpotential environment
   -h, --help               Show this help
 
+Environment:
+  NUMPY_VERSION             NumPy version for the MatterGen and VSBTools
+                            environments (default: 1.26.4; must be <2)
+
 Editable-install disclaimer:
   Later source edits change future runs. Preserve commit hashes and any
   uncommitted patch with important results. Use --regular for environments
@@ -120,6 +124,10 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [[ "$NUMPY_VERSION" =~ ^2([.]|$) ]]; then
+    fail "NUMPY_VERSION=$NUMPY_VERSION is incompatible with MatterGen's numpy<2 requirement"
+fi
 
 log() {
     printf '\n[%s] %s\n' "$(date '+%H:%M:%S')" "$*"
@@ -210,6 +218,25 @@ pip_with_pytorch_index() {
     else
         "$python" -m pip install "$@"
     fi
+}
+
+enforce_numpy_version() {
+    local python="$1"
+    local label="$2"
+
+    log "Enforcing NumPy $NUMPY_VERSION in the $label environment"
+    "$python" -m pip install --force-reinstall --no-deps \
+        "numpy==$NUMPY_VERSION"
+}
+
+check_numpy_version() {
+    local python="$1"
+    local label="$2"
+    local installed
+
+    installed="$("$python" -c 'import numpy; print(numpy.__version__)')"
+    [[ "$installed" == "$NUMPY_VERSION" ]] \
+        || fail "$label environment has NumPy $installed; expected $NUMPY_VERSION"
 }
 
 require_command git
@@ -328,6 +355,14 @@ PY
 else
     GRACE_PYTHON=""
 fi
+
+# MatterGen pins NumPy below 2, and the selected PyTorch wheels use the NumPy
+# 1.x C ABI. Reapply the pin after every package installation because a later
+# dependency resolver can otherwise upgrade the VSBTools environment to NumPy 2.
+enforce_numpy_version "$MATTERGEN_PYTHON" "MatterGen"
+enforce_numpy_version "$VSBTOOLS_PYTHON" "VSBTools"
+check_numpy_version "$MATTERGEN_PYTHON" "MatterGen"
+check_numpy_version "$VSBTOOLS_PYTHON" "VSBTools"
 
 MATTERGEN_IMPORT_ROOT="$("$MATTERGEN_PYTHON" - <<'PY'
 from pathlib import Path
