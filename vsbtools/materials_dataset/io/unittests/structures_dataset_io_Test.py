@@ -46,6 +46,11 @@ class extxyz_Test(unittest.TestCase):
         expected = sum(len(utils.load_from_extxyz(file)) for file in extxyz_files)
         self.assertGreater(len(ds), 0)
         self.assertEqual(len(ds), expected)
+        self.assertEqual(ds.metadata["source_file_count"], len(extxyz_files))
+        self.assertEqual(ds.metadata["parsed_structure_count"], expected)
+        self.assertEqual(ds.metadata["retained_structure_count"], expected)
+        self.assertEqual(ds.metadata["failed_file_count"], 0)
+        self.assertIn(f"{expected} parsed structures", ds.metadata["message"])
 
     def test_patterns_priority_fallback(self):
         extxyz_root = (PATH_WITH_TESTS / "../../unittests_datasets/cifs").resolve()

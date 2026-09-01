@@ -233,7 +233,8 @@ class StructureDatasetIO:
         # use_archives = self.expand_archives if expand_archives is None else expand_archives
 
         entries: list[CrystalEntry] = []
-        total = 0
+        source_file_count = 0
+        parsed_structure_count = 0
         bad = 0
         matched_by_pattern = {
             p: list(_iter_structure_files(self.root, p))
@@ -243,8 +244,22 @@ class StructureDatasetIO:
         batch_metadata = get_batch_metadata(self.root, self.batch_metadata_file) if \
             self.batch_metadata_file else None
         if selected_pattern is None:
-            msg = message or f"0 structures out of 0 files collected from {self.root}"
-            return CrystalDataset(entries, message=msg, supplementary_metadata={'batch_metadata': batch_metadata})
+            msg = message or (
+                f"0 structures out of 0 parsed structures across 0 files "
+                f"collected from {self.root}"
+            )
+            return CrystalDataset(
+                entries,
+                message=msg,
+                supplementary_metadata={
+                    "batch_metadata": batch_metadata,
+                    "source_pattern": None,
+                    "source_file_count": 0,
+                    "parsed_structure_count": 0,
+                    "retained_structure_count": 0,
+                    "failed_file_count": 0,
+                },
+            )
 
         matched_patterns = [p for p in self.patterns_priority if matched_by_pattern[p]]
         if len(matched_patterns) > 1:
@@ -272,10 +287,11 @@ class StructureDatasetIO:
 
         selected_kind = _pattern_kind(selected_pattern)
         for file in matched_by_pattern[selected_pattern]:
-            total += 1
+            source_file_count += 1
             if selected_kind == "single":
                 struct = _safe_structure_from_file(file)
                 if struct:
+                    parsed_structure_count += 1
                     entries.append(CrystalEntry(id=next(self._id_iter), structure=struct,
                                                 metadata={"source": self.source_name, "file": file.name}))
                 else:
@@ -289,6 +305,7 @@ class StructureDatasetIO:
                             f"Registered batch patterns: {tuple(BATCH_READER_REGISTRY)}."
                         )
                     batch_ds = reader(self, file)
+                    parsed_structure_count += len(batch_ds)
                     entries.extend(batch_ds)
                 except Exception as exc:
                     LOG.warning("Skipping batch file %s – %s", file, exc)
@@ -302,8 +319,24 @@ class StructureDatasetIO:
 
         if elements:
             entries = [e for e in entries if not (set(e.composition.as_data_dict()["elements"]) - set(elements))]
-        msg = message or f"{len(entries)} structures out of {total} files collected from {self.root}"
-        return CrystalDataset(entries, message=msg, supplementary_metadata={'batch_metadata': batch_metadata})
+        retained_structure_count = len(entries)
+        msg = message or (
+            f"{retained_structure_count} structures out of "
+            f"{parsed_structure_count} parsed structures across "
+            f"{source_file_count} files collected from {self.root}"
+        )
+        return CrystalDataset(
+            entries,
+            message=msg,
+            supplementary_metadata={
+                "batch_metadata": batch_metadata,
+                "source_pattern": selected_pattern,
+                "source_file_count": source_file_count,
+                "parsed_structure_count": parsed_structure_count,
+                "retained_structure_count": retained_structure_count,
+                "failed_file_count": bad,
+            },
+        )
 
     def load_from_multiimage_poscar(
         self,
