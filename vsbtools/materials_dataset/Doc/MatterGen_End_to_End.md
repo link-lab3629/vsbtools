@@ -571,298 +571,35 @@ cd "$ANALYSIS_ROOT"
 "$ANALYSIS_INSTALL_ROOT/launch_jupyter.sh"
 ```
 
-Open `mg_generation_postprocessing_pipeline.ipynb`, run Sections 0 and 1, then
-run the cells below. `ANALYSIS_INSTALL_ROOT` must match `INSTALL_ROOT`.
+Open `mg_generation_postprocessing_pipeline.ipynb`. For the system created in
+this guide, use this exact run order:
 
-#### 2.4.1 Run the scenario pipeline
+1. Run Section 0, **Load the installed external environments**.
+2. Skip Sections 1–3; they operate on packaged demonstration datasets.
+3. Run Sections 4.1 and 4.2.
+4. Run exactly one callable cell: 4.3A for supported guided metadata, or 4.3B
+   for an unguided search, ranked guidance, grouped species, or a manually
+   selected descriptor.
+5. Run Sections 4.4 and 4.5 to create the histogram/KDE and Pareto figures.
 
-```python
-import os
-from pathlib import Path
+The Section 4 cells read the exported `SYSTEM_ROOT`, discover every generation
+directory, run the scenario, build `table.txt` and Pareto-front files, and save
+figures below `$SYSTEM_ROOT/analysis-run`. They are part of the notebook; no
+Python snippets need to be copied from this guide.
 
-from vsbtools.materials_dataset.analysis.scenario_pipeline import process_generation_dir
+#### 2.4.1 Expected outputs
 
-SYSTEM_ROOT = Path(os.environ["SYSTEM_ROOT"])
-RAW_ROOT = SYSTEM_ROOT / "raw-generations"
-PROCESSED_ROOT = SYSTEM_ROOT / "analysis-run" / "processed"
-FIGURE_ROOT = SYSTEM_ROOT / "analysis-run" / "figures"
-SCENARIO = SYSTEM_ROOT / "configs" / "scenario_no_relax.yaml"
+After Section 4 finishes, check:
 
-PROCESSED_ROOT.mkdir(parents=True, exist_ok=True)
-FIGURE_ROOT.mkdir(parents=True, exist_ok=True)
-
-generation_dirs = [
-    path
-    for path in (RAW_ROOT / "non_guided").glob("gen_*")
-    if path.is_dir()
-]
-for generation_root in sorted((RAW_ROOT / "repeated-guided").glob("gen_*")):
-    generation_dirs.extend(
-        path for path in generation_root.glob("batch_*") if path.is_dir()
-    )
-    generation_dirs.extend(
-        path.parent
-        for path in generation_root.glob("results/**/run_*/input_parameters.txt")
-    )
-generation_dirs = sorted(set(generation_dirs))
-if not generation_dirs:
-    raise RuntimeError(f"No generation directories found under {RAW_ROOT}")
-
-repos = []
-for generation_dir in generation_dirs:
-    repo = process_generation_dir(
-        generation_dir,
-        PROCESSED_ROOT,
-        SCENARIO,
-        batch_metadata_file="input_parameters.txt",
-    )
-    if repo is None:
-        raise RuntimeError(f"Missing input_parameters.txt under {generation_dir}")
-    repos.append(repo.root)
-
-system_repo = repos[0].parent
-print(*repos, sep="\n")
+```text
+$SYSTEM_ROOT/analysis-run/
+├── processed/                    # scenario repositories and stage datasets
+└── figures/                      # histogram/KDE and Pareto-front PDFs
 ```
 
-The scenario parses structures, filters minimum distances, symmetrizes, estimates
-GRACE energies, collects OPTIMADE references, deduplicates, and merges
-references. The distance filter precedes spglib symmetrization. Reruns resume
-from saved stages; use a fresh processed directory after changing dependencies.
-
-#### 2.4.2 Build summary tables and Pareto-front files
-
-Pass explicit reporting callables for ranked and grouped guidance. Use the same
-loss dictionaries as in generation.
-
-```python
-from pymatgen.core import Element
-
-from vsbtools.materials_dataset.analysis.guidance_statistics import (
-    get_loss_fn,
-    get_target_value_fn,
-)
-from vsbtools.materials_dataset.scripts.build_tables import (
-    build_guidance_summary_for_processed_system,
-)
-
-center_species = [Element("Pd").Z, Element("Ni").Z]
-neighbor_species = Element("H").Z
-
-ranked_target = {
-    "margin": 0.05,
-    "temperature": 0.10,
-    "alpha": 2.0,
-    "cn_tolerance": 0.4,
-    "cn_temperature": 0.05,
-    "satisfaction_weight": 1.0,
-    "[Pd,Ni]-H": 6,
-}
-group_target = {
-    "mode": "huber",
-    "alpha": 3.0,
-    "[Pd,Ni]-H": 6,
-}
-
-descriptor_fn = get_target_value_fn(
-    "compute_mean_coordination",
-    force_gpu=0,
-    type_A=center_species,
-    type_B=neighbor_species,
-    alpha=3.0,
-)
-report_callables = {
-    "CN_[Pd,Ni]-H": descriptor_fn,
-    "loss_ranked_coordination": get_loss_fn(
-        "ranked_coordination", force_gpu=0, target=ranked_target
-    ),
-    "loss_mean_group_coordination": get_loss_fn(
-        "mean_coordination", force_gpu=0, target=group_target
-    ),
-}
-
-PARETO_STAGE = "add_ref_deduplicated"
-summary_report = build_guidance_summary_for_processed_system(
-    system_repo,
-    target_stages=[PARETO_STAGE],
-    auto_ref_stages=True,
-    callables=report_callables,
-    max_pareto_front=3,
-    return_report=True,
-)
-print(summary_report)
-```
-
-Use `PARETO_STAGE = "deduplicate_all"` for generated structures only;
-`add_ref_deduplicated` also includes reference structures.
-
-#### 2.4.3 Choose the histogram/KDE callable
-
-Choose one callable regime below, then run the common plotting cell.
-
-#### Regime A: reconstruct callables from guided batch metadata
-
-`callables_from_ds(parse_raw_dataset)` reads `batch_metadata["guidance"]` and
-recreates the descriptor, target, and matching loss. It supports guided runs
-with simple metadata, such as `mean_coordination` with `Co-O`,
-`target_coordination_share`, or `volume_pa`.
-
-```python
-from vsbtools.materials_dataset.analysis.guidance_statistics import callables_from_ds
-from vsbtools.materials_dataset.scripts.build_tables import stage_datasets_from_repo
-
-guided_parse_ds = None
-for repo in repos:
-    parse_ds = stage_datasets_from_repo(repo)["parse_raw"]
-    guidance = parse_ds.metadata["batch_metadata"].get("guidance")
-    if isinstance(guidance, dict) and guidance:
-        guided_parse_ds = parse_ds
-        break
-
-if guided_parse_ds is None:
-    raise RuntimeError("No guided batch metadata was found.")
-
-automatic_callables, automatic_targets, guidance_name = callables_from_ds(
-    guided_parse_ds,
-    force_gpu=0,
-)
-descriptor_names = [
-    name for name in automatic_callables
-    if not name.startswith("loss_")
-]
-if len(descriptor_names) != 1:
-    raise RuntimeError(f"Choose one descriptor from {descriptor_names!r}.")
-
-descriptor_name = descriptor_names[0]
-descriptor_fn = automatic_callables[descriptor_name]
-descriptor_target = automatic_targets[descriptor_name]
-descriptor_label = descriptor_name
-print("Guidance:", guidance_name, "Descriptor:", descriptor_name)
-```
-
-Use the manual regime for the ranked-softplus and grouped-key examples here;
-the metadata helper cannot infer ranked-softplus descriptors or grouped keys
-such as `[Pd,Ni]-H`.
-
-#### Regime B: construct callables manually
-
-Use manual construction for an unguided batch (`guidance: None`) and for testing
-alternative descriptors, cutoffs, targets, or losses on the same structures.
-
-```python
-from pymatgen.core import Element
-
-from vsbtools.materials_dataset.analysis.guidance_statistics import (
-    get_target_value_fn,
-)
-
-descriptor_fn = get_target_value_fn(
-    "compute_mean_coordination",
-    force_gpu=0,
-    type_A=[Element("Pd").Z, Element("Ni").Z],
-    type_B=Element("H").Z,
-    alpha=3.0,
-)
-descriptor_target = 6
-descriptor_label = "mean CN([Pd,Ni]-H)"
-```
-
-Use the `get_loss_fn(name, target=...)` pattern from Section 2.4.2 to recompute a
-loss for Pareto analysis.
-
-#### 2.4.4 Plot a histogram or KDE
-
-Run this after either regime. Set `PLOT_KIND` to `"histogram"` or `"kde"`.
-
-```python
-import matplotlib.pyplot as plt
-
-from vsbtools.materials_dataset.analysis.guidance_statistics import (
-    calculate_values,
-    collect_stage_dataset_dict,
-    histo_data_collection,
-    plot_multi_kde,
-    plot_multihistogram,
-)
-
-datasets = collect_stage_dataset_dict(
-    repos,
-    stage="symmetrize_raw",
-    ref_stage="poll_db",
-)
-PLOT_KIND = "kde"
-
-if PLOT_KIND == "kde":
-    values = calculate_values(datasets, fn=descriptor_fn, filter_max_el=False)
-    fig, ax = plot_multi_kde(
-        values,
-        target=descriptor_target,
-        max_value=10,
-        simplified_legend=True,
-    )
-else:
-    histogram_data = histo_data_collection(
-        datasets,
-        fn=descriptor_fn,
-        filter_max_el=False,
-        auto_adjust_bins=True,
-        n_bins=20,
-    )
-    fig, ax = plot_multihistogram(
-        histogram_data,
-        target=descriptor_target,
-        max_bincenter=10,
-        show_gaussian=True,
-        simplified_legend=True,
-    )
-
-ax.set_xlabel(descriptor_label)
-fig.savefig(
-    FIGURE_ROOT / f"Ni-Pd-H_coordination_{PLOT_KIND}.pdf",
-    bbox_inches="tight",
-    pad_inches=0.1,
-)
-plt.close(fig)
-```
-
-#### 2.4.5 Plot the Pareto fronts
-
-The summary step already creates front CSVs, tables, and POSCAR directories.
-This cell creates PDF figures for both losses.
-
-```python
-import matplotlib.pyplot as plt
-
-from vsbtools.materials_dataset.analysis.pareto_fronts import plot_pareto
-from vsbtools.materials_dataset.scripts.build_tables import stage_datasets_from_repo
-
-losses = {
-    "loss_ranked_coordination": "ranked_coordination_",
-    "loss_mean_group_coordination": "mean_group_coordination_",
-}
-
-for repo_no, repo in enumerate(repos, start=1):
-    stage_dir = Path(stage_datasets_from_repo(repo)[PARETO_STAGE].base_path)
-    for loss_column, prefix in losses.items():
-        if not (stage_dir / f"{prefix}pf_1.csv").exists():
-            continue
-        ax = plot_pareto(
-            stage_dir,
-            col1=loss_column,
-            col2="e_hull/at",
-            trim_col1=None,
-            trim_col2=0.3,
-            n_fronts=3,
-            prefix=prefix,
-            article_axes=True,
-            show_title=False,
-        )
-        ax.figure.savefig(
-            FIGURE_ROOT / f"repo_{repo_no}_{prefix}pareto.pdf",
-            bbox_inches="tight",
-            pad_inches=0.1,
-        )
-        plt.close(ax.figure)
-```
+The processed Pareto stage contains `table.txt`, front CSV files, and selected
+POSCAR directories. Section 4.2 explains the choice between generated-only and
+generated-plus-reference Pareto stages.
 
 ### 2.5 Archive the system
 
