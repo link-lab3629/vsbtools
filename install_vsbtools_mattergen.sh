@@ -15,6 +15,7 @@ MATTERGEN_REF=""
 FETCH_SOURCES=0
 
 NUMPY_VERSION="${NUMPY_VERSION:-1.26.4}"
+SCIPY_VERSION="${SCIPY_VERSION:-1.17.1}"
 # MatterGen 1.0.3 has lower bounds for these packages, so an otherwise fresh
 # install can resolve a newer Emmet/Pymatgen API pair that is incompatible with
 # MatterGen's imports (for example, emmet-core 0.87 expects pymatgen.core.graphs).
@@ -51,6 +52,8 @@ Options:
 Environment:
   NUMPY_VERSION             NumPy version for the MatterGen and VSBTools
                             environments (default: 1.26.4; must be <2)
+  SCIPY_VERSION             SciPy version compatible with the NumPy pin
+                            (default: 1.17.1)
   MATTERGEN_EMMET_CORE_VERSION
                             emmet-core version for MatterGen (default: 0.84.9)
   MATTERGEN_PYMATGEN_VERSION
@@ -248,6 +251,26 @@ check_numpy_version() {
         || fail "$label environment has NumPy $installed; expected $NUMPY_VERSION"
 }
 
+enforce_scipy_version() {
+    local python="$1"
+    local label="$2"
+
+    log "Enforcing SciPy $SCIPY_VERSION in the $label environment"
+    "$python" -m pip install --force-reinstall --no-deps \
+        "scipy==$SCIPY_VERSION"
+}
+
+check_scipy_version() {
+    local python="$1"
+    local label="$2"
+    local installed
+
+    installed="$("$python" -c \
+        'from importlib.metadata import version; print(version("scipy"))')"
+    [[ "$installed" == "$SCIPY_VERSION" ]] \
+        || fail "$label environment has SciPy $installed; expected $SCIPY_VERSION"
+}
+
 enforce_mattergen_api_versions() {
     log "Enforcing MatterGen-compatible Emmet/Pymatgen versions"
     "$MATTERGEN_PYTHON" -m pip install --force-reinstall --no-deps \
@@ -322,7 +345,9 @@ make_venv "$MATTERGEN_VENV"
 MATTERGEN_PYTHON="$MATTERGEN_VENV/bin/python"
 
 log "Installing MatterGen binary dependencies"
-"$MATTERGEN_PYTHON" -m pip install "numpy==$NUMPY_VERSION"
+"$MATTERGEN_PYTHON" -m pip install \
+    "numpy==$NUMPY_VERSION" \
+    "scipy==$SCIPY_VERSION"
 pip_with_pytorch_index "$MATTERGEN_PYTHON" \
     "torch==$PYTORCH_VERSION" \
     "torchvision==$TORCHVISION_VERSION" \
@@ -358,7 +383,9 @@ make_venv "$VSBTOOLS_VENV"
 VSBTOOLS_PYTHON="$VSBTOOLS_VENV/bin/python"
 
 log "Installing the VSBTools analysis environment"
-"$VSBTOOLS_PYTHON" -m pip install "numpy==$NUMPY_VERSION"
+"$VSBTOOLS_PYTHON" -m pip install \
+    "numpy==$NUMPY_VERSION" \
+    "scipy==$SCIPY_VERSION"
 if [[ "$INSTALL_MODE" == "editable" ]]; then
     "$VSBTOOLS_PYTHON" -m pip install -e "$VSBTOOLS_SOURCE"
 else
@@ -377,7 +404,7 @@ fi
     prettytable \
     pymatgen \
     PyYAML \
-    scipy
+    "scipy==$SCIPY_VERSION"
 pip_with_pytorch_index "$VSBTOOLS_PYTHON" "torch==$PYTORCH_VERSION"
 
 if [[ "$INSTALL_GRACE" -eq 1 ]]; then
@@ -394,12 +421,17 @@ else
 fi
 
 # MatterGen pins NumPy below 2, and the selected PyTorch wheels use the NumPy
-# 1.x C ABI. Reapply the pin after every package installation because a later
-# dependency resolver can otherwise upgrade the VSBTools environment to NumPy 2.
+# 1.x C ABI. SciPy 1.18 and newer require NumPy 2. Reapply both compatible
+# versions after every package installation because a later dependency resolver
+# can otherwise upgrade them independently.
 enforce_numpy_version "$MATTERGEN_PYTHON" "MatterGen"
+enforce_scipy_version "$MATTERGEN_PYTHON" "MatterGen"
 enforce_numpy_version "$VSBTOOLS_PYTHON" "VSBTools"
+enforce_scipy_version "$VSBTOOLS_PYTHON" "VSBTools"
 check_numpy_version "$MATTERGEN_PYTHON" "MatterGen"
+check_scipy_version "$MATTERGEN_PYTHON" "MatterGen"
 check_numpy_version "$VSBTOOLS_PYTHON" "VSBTools"
+check_scipy_version "$VSBTOOLS_PYTHON" "VSBTools"
 
 log "Validating MatterGen CLI imports"
 "$MATTERGEN_PYTHON" - <<'PY'
@@ -408,11 +440,14 @@ from pathlib import Path
 
 import mattergen
 from mattergen.scripts.generate import _main
+import scipy
+from scipy.optimize import linear_sum_assignment
 import torch
 
 print("mattergen:", Path(mattergen.__file__).resolve())
 print("emmet-core:", version("emmet-core"))
 print("pymatgen:", version("pymatgen"))
+print("scipy:", scipy.__version__)
 print("torch:", torch.__version__)
 PY
 
@@ -439,12 +474,19 @@ sys.path.insert(0, os.environ["MATTERGEN_IMPORT_ROOT"])
 sys.path.append(os.environ["MATTERGEN_SITE_PACKAGES"])
 
 import mattergen
+import scipy
+from scipy.optimize import linear_sum_assignment
 import torch
 import vsbtools
+from vsbtools.materials_dataset.analysis.scenario_pipeline import (
+    process_generation_dir,
+)
 
 print("vsbtools:", Path(vsbtools.__file__).resolve())
 print("mattergen:", Path(mattergen.__file__).resolve())
+print("scipy:", scipy.__version__)
 print("torch:", torch.__version__)
+print("scenario_pipeline import: OK")
 PY
 
 VSBTOOLS_COMMIT="$(git_commit "$VSBTOOLS_SOURCE")"
@@ -468,6 +510,7 @@ ENV_FILE="$ENV_ROOT/workflow_env.sh"
     printf 'export VSBTOOLS_PYTHON=%q\n' "$VSBTOOLS_PYTHON"
     printf 'export MATTERGEN_PYTHON=%q\n' "$MATTERGEN_PYTHON"
     printf 'export GRACE_PYTHON=%q\n' "$GRACE_PYTHON"
+    printf 'export SCIPY_VERSION=%q\n' "$SCIPY_VERSION"
     printf 'export MATTERGEN_EMMET_CORE_VERSION=%q\n' "$MATTERGEN_EMMET_CORE_VERSION"
     printf 'export MATTERGEN_PYMATGEN_VERSION=%q\n' "$MATTERGEN_PYMATGEN_VERSION"
     printf 'export MATTERGEN_PYTHON_PATH=%q\n' "$MATTERGEN_IMPORT_ROOT"
@@ -497,6 +540,7 @@ cat > "$MANIFEST" <<EOF
   "grace_python": "$GRACE_PYTHON",
   "pytorch_version": "$PYTORCH_VERSION",
   "numpy_version": "$NUMPY_VERSION",
+  "scipy_version": "$SCIPY_VERSION",
   "mattergen_emmet_core_version": "$MATTERGEN_EMMET_CORE_VERSION",
   "mattergen_pymatgen_version": "$MATTERGEN_PYMATGEN_VERSION"
 }

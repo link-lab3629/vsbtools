@@ -157,6 +157,11 @@ newer API pair. If an existing environment reports an error such as
 pair and validates `mattergen.scripts.generate` before reporting success.
 Advanced users can override the defaults with
 `MATTERGEN_EMMET_CORE_VERSION` and `MATTERGEN_PYMATGEN_VERSION`.
+The installer also keeps NumPy `1.26.4` paired with SciPy `1.17.1` in the
+MatterGen and VSBTools environments. Rerunning it repairs a newer SciPy
+installation that requires NumPy 2, and validation imports the VSBTools
+scenario pipeline before reporting success. Override this pair with
+`NUMPY_VERSION` and `SCIPY_VERSION` only when both releases are compatible.
 
 ### Choosing editable or regular installation
 
