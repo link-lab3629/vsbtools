@@ -183,9 +183,9 @@ The first path should be under `$CODE_ROOT/vsbtools`; the second should be under
 
 Editable installations are mutable. Uncommitted edits and later branch changes
 alter subsequent runs, and a commit hash alone cannot reproduce uncommitted
-content. Before conducting an experiment, record the relevant commit hashes and
-save any uncommitted changes as a patch. Archive these provenance records
-together with `WORK_ROOT`.
+content. Before each generation, record the relevant commit hashes and save
+any uncommitted changes as a patch in that generation's provenance directory.
+Archive the complete `WORK_ROOT` after the experiment.
 
 Use `--regular` only when the experiment needs an independent stable code
 snapshot. If you merely want to try another branch in the existing editable
@@ -233,56 +233,82 @@ paths for VSBTools, MatterGen, and GRACE; it does not perform an installation.
 For an unambiguous launch, use the matching environment's
 `launch_jupyter.sh` or absolute interpreter paths.
 
-#### Record provenance before generation
+#### Record provenance for each generation
 
-Before starting generation, save the installation manifest and the exact Git
-state under `WORK_ROOT`. The installer creates the manifest automatically; the
-following commands copy it and save commit hashes, status, and patches for
-both source repositories:
+`installation_manifest.json` describes one installed environment. Therefore,
+save a copy inside each generation's output directory rather than keeping one
+shared provenance directory for the whole `WORK_ROOT`. Define this helper once
+before starting generation:
 
 ```bash
-PROVENANCE_ROOT="$WORK_ROOT/provenance"
-mkdir -p "$PROVENANCE_ROOT"
+record_generation_provenance() {
+  local generation_root="$1"
+  local install_root="$2"
+  local vsbtools_source="$3"
+  local mattergen_source="$4"
+  local provenance_root="$generation_root/provenance"
+  local repo_name
+  local repo_root
 
-# Select the installation used for this experiment.
-INSTALL_ROOT="$CODE_ROOT/workflow-env"
-# For a regular snapshot, use instead:
-# INSTALL_ROOT="$CODE_ROOT/workflow-env-regular"
+  mkdir -p "$provenance_root"
+  cp "$install_root/installation_manifest.json" \
+    "$provenance_root/installation_manifest.json"
+  cp "$install_root/workflow_env.sh" \
+    "$provenance_root/workflow_env.sh"
 
-cp "$INSTALL_ROOT/installation_manifest.json" \
-  "$PROVENANCE_ROOT/installation_manifest.json"
-cp "$INSTALL_ROOT/workflow_env.sh" \
-  "$PROVENANCE_ROOT/workflow_env.sh"
-
-for REPO_NAME in vsbtools scout-matter; do
-  REPO_ROOT="$CODE_ROOT/$REPO_NAME"
-  git -C "$REPO_ROOT" rev-parse HEAD \
-    > "$PROVENANCE_ROOT/${REPO_NAME}.commit"
-  git -C "$REPO_ROOT" status --short --branch \
-    > "$PROVENANCE_ROOT/${REPO_NAME}.status"
-  git -C "$REPO_ROOT" diff --binary HEAD \
-    > "$PROVENANCE_ROOT/${REPO_NAME}.patch"
-  git -C "$REPO_ROOT" ls-files --others --exclude-standard \
-    > "$PROVENANCE_ROOT/${REPO_NAME}.untracked"
-done
+  for repo_name in vsbtools scout-matter; do
+    if [[ "$repo_name" == vsbtools ]]; then
+      repo_root="$vsbtools_source"
+    else
+      repo_root="$mattergen_source"
+    fi
+    git -C "$repo_root" rev-parse HEAD \
+      > "$provenance_root/${repo_name}.commit"
+    git -C "$repo_root" status --short --branch \
+      > "$provenance_root/${repo_name}.status"
+    git -C "$repo_root" diff --binary HEAD \
+      > "$provenance_root/${repo_name}.patch"
+    git -C "$repo_root" ls-files --others --exclude-standard \
+      > "$provenance_root/${repo_name}.untracked"
+  done
+}
 ```
+
+Call it immediately before each generation, passing that generation's output
+directory, its environment root, and the source checkouts used to create that
+environment. For example:
+
+```bash
+record_generation_provenance \
+  "$RAW_ROOT/unguided" \
+  "$CODE_ROOT/workflow-env" \
+  "$CODE_ROOT/vsbtools" \
+  "$CODE_ROOT/scout-matter"
+```
+
+If another generation uses a regular snapshot, pass its environment root:
+
+```bash
+record_generation_provenance \
+  "$RAW_ROOT/branch-b-regular" \
+  "$CODE_ROOT/workflow-env-regular" \
+  "$CODE_ROOT/vsbtools-branch-b" \
+  "$CODE_ROOT/scout-matter-branch-b"
+```
+
+The copied installation manifest must have been produced after selecting the
+branches for that generation. If you switch branches in an existing editable
+checkout, rerun the installer when its dependencies or installation metadata
+change; the commit, status, and patch files still record the exact source state
+for the generation.
 
 An empty `.patch` file means that there are no tracked changes. If an
 `.untracked` file is non-empty and those files affect the experiment, commit
-them or copy their contents into `provenance/` as well; the list records their
-names only. For a clean committed checkout, the commit files and
-`installation_manifest.json` are the essential records. The saved patches can
-later be reapplied with, for example,
-`git -C "$CODE_ROOT/vsbtools" apply "$PROVENANCE_ROOT/vsbtools.patch"`.
-
-At the end of the experiment, archive the complete work tree, including
-`provenance/`:
-
-```bash
-WORK_ARCHIVE="${WORK_ROOT%/}.tar.gz"
-tar -czf "$WORK_ARCHIVE" \
-  -C "$(dirname "$WORK_ROOT")" "$(basename "$WORK_ROOT")"
-```
+them or copy their contents into that generation's `provenance/` directory as
+well; the list records their names only. For a clean committed checkout, the
+commit files and `installation_manifest.json` are the essential records. A
+saved patch can later be reapplied with, for example,
+`git -C "$CODE_ROOT/vsbtools" apply "$RAW_ROOT/unguided/provenance/vsbtools.patch"`.
 
 ### 1.2 Install and verify GRACE/tensorpotential
 
@@ -339,9 +365,20 @@ export RAW_ROOT="$WORK_ROOT/raw-generations/$SYSTEM"
 mkdir -p "$RAW_ROOT"
 ```
 
+Before each batch, select its branches and installation, then record that
+selection in the batch's own output directory. The examples below use the
+editable installation for all three batches; pass a different environment root
+to `record_generation_provenance` when a batch uses another installation.
+
 ### 2.1 Unguided baseline
 
 ```bash
+record_generation_provenance \
+  "$RAW_ROOT/unguided" \
+  "$CODE_ROOT/workflow-env" \
+  "$CODE_ROOT/vsbtools" \
+  "$CODE_ROOT/scout-matter"
+
 mattergen-generate "$RAW_ROOT/unguided" \
   --pretrained-name=chemical_system \
   --batch_size=20 \
@@ -359,6 +396,12 @@ mattergen-generate "$RAW_ROOT/unguided" \
 grouped center `[Pd,Ni]` is treated as one coordination constraint.
 
 ```bash
+record_generation_provenance \
+  "$RAW_ROOT/ranked-softplus" \
+  "$CODE_ROOT/workflow-env" \
+  "$CODE_ROOT/vsbtools" \
+  "$CODE_ROOT/scout-matter"
+
 mattergen-generate "$RAW_ROOT/ranked-softplus" \
   --pretrained-name=chemical_system \
   --batch_size=20 \
@@ -381,6 +424,12 @@ Grouped species use the current `mean_coordination` objective with a grouped
 key. `group_coordination` remains a compatibility alias.
 
 ```bash
+record_generation_provenance \
+  "$RAW_ROOT/group-coordination" \
+  "$CODE_ROOT/workflow-env" \
+  "$CODE_ROOT/vsbtools" \
+  "$CODE_ROOT/scout-matter"
+
 mattergen-generate "$RAW_ROOT/group-coordination" \
   --pretrained-name=chemical_system \
   --batch_size=20 \
@@ -429,6 +478,12 @@ The following command repeats the mean group-coordination generation from
 Section 2.3 fifty times:
 
 ```bash
+record_generation_provenance \
+  "$WORK_ROOT/repeated-guided" \
+  "$CODE_ROOT/workflow-env" \
+  "$CODE_ROOT/vsbtools" \
+  "$CODE_ROOT/scout-matter"
+
 ./multiple_runs.sh \
   --batch-size 20 \
   --num-batches 1 \
@@ -501,6 +556,11 @@ Run the YAML configuration as the only command-line option:
 ```bash
 ./multiple_runs.sh --config "$WORK_ROOT/configs/repeated-ranked-softplus.yaml"
 ```
+
+For the YAML form, call `record_generation_provenance` immediately before this
+command as well, using the campaign directory specified by `base_dir` as the
+generation root. Use a different campaign directory when its branch or
+installation differs from another ensemble.
 
 On an out-of-memory failure, the script retries the same run with
 `ceil(current_batch_size * oom_backoff_percent / 100)`. It stops after
@@ -875,13 +935,18 @@ $PROJECT_ROOT/
     │   └── ranked-softplus.log
     ├── raw-generations/Ni-Pd-H/
     │   ├── unguided/
+    │   │   └── provenance/       # manifest and Git state for this generation
     │   ├── ranked-softplus/
+    │   │   └── provenance/
     │   └── group-coordination/
-    ├── repeated-guided/results/Ni-Pd-H/
-    │   └── <guidance>/<parameters>/<settings>/
-    │       ├── generated_crystals.extxyz
-    │       ├── durations.csv
-    │       └── run_N/
+    │       └── provenance/
+    ├── repeated-guided/
+    │   ├── provenance/            # manifest and Git state for this campaign
+    │   └── results/Ni-Pd-H/
+    │       └── <guidance>/<parameters>/<settings>/
+    │           ├── generated_crystals.extxyz
+    │           ├── durations.csv
+    │           └── run_N/
     └── analysis-run/
         ├── processed/Ni-Pd-H/<generation>/<stage>/
         │   ├── manifest.yaml, data.csv, POSCARS/
@@ -893,6 +958,15 @@ $PROJECT_ROOT/
             └── repo_*_pareto.pdf
 ```
 
-Keep `WORK_ROOT` together with the scenario YAML and the Git commit hashes from
-both repositories. These are the inputs needed to reproduce the analysis with a
-fresh `CODE_ROOT` installation.
+Keep each generation directory together with its own `provenance/` directory.
+These per-generation records, the scenario YAML, and the processed outputs are
+the inputs needed to reproduce the analysis with a fresh `CODE_ROOT`
+installation.
+
+To archive all generations and their provenance together:
+
+```bash
+WORK_ARCHIVE="${WORK_ROOT%/}.tar.gz"
+tar -czf "$WORK_ARCHIVE" \
+  -C "$(dirname "$WORK_ROOT")" "$(basename "$WORK_ROOT")"
+```
