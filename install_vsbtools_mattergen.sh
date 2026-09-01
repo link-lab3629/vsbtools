@@ -15,6 +15,11 @@ MATTERGEN_REF=""
 FETCH_SOURCES=0
 
 NUMPY_VERSION="${NUMPY_VERSION:-1.26.4}"
+# MatterGen 1.0.3 has lower bounds for these packages, so an otherwise fresh
+# install can resolve a newer Emmet/Pymatgen API pair that is incompatible with
+# MatterGen's imports (for example, emmet-core 0.87 expects pymatgen.core.graphs).
+MATTERGEN_EMMET_CORE_VERSION="${MATTERGEN_EMMET_CORE_VERSION:-0.84.9}"
+MATTERGEN_PYMATGEN_VERSION="${MATTERGEN_PYMATGEN_VERSION:-2024.10.29}"
 PYTORCH_VERSION="${PYTORCH_VERSION:-}"
 TORCHVISION_VERSION="${TORCHVISION_VERSION:-}"
 TORCHAUDIO_VERSION="${TORCHAUDIO_VERSION:-}"
@@ -46,6 +51,10 @@ Options:
 Environment:
   NUMPY_VERSION             NumPy version for the MatterGen and VSBTools
                             environments (default: 1.26.4; must be <2)
+  MATTERGEN_EMMET_CORE_VERSION
+                            emmet-core version for MatterGen (default: 0.84.9)
+  MATTERGEN_PYMATGEN_VERSION
+                            pymatgen version paired with it (default: 2024.10.29)
 
 Editable-install disclaimer:
   Later source edits change future runs. Preserve commit hashes and any
@@ -239,6 +248,27 @@ check_numpy_version() {
         || fail "$label environment has NumPy $installed; expected $NUMPY_VERSION"
 }
 
+enforce_mattergen_api_versions() {
+    log "Enforcing MatterGen-compatible Emmet/Pymatgen versions"
+    "$MATTERGEN_PYTHON" -m pip install --force-reinstall --no-deps \
+        "emmet-core==$MATTERGEN_EMMET_CORE_VERSION" \
+        "pymatgen==$MATTERGEN_PYMATGEN_VERSION"
+}
+
+check_mattergen_api_versions() {
+    local installed_emmet installed_pymatgen
+
+    installed_emmet="$("$MATTERGEN_PYTHON" -c \
+        'from importlib.metadata import version; print(version("emmet-core"))')"
+    installed_pymatgen="$("$MATTERGEN_PYTHON" -c \
+        'from importlib.metadata import version; print(version("pymatgen"))')"
+
+    [[ "$installed_emmet" == "$MATTERGEN_EMMET_CORE_VERSION" ]] \
+        || fail "MatterGen environment has emmet-core $installed_emmet; expected $MATTERGEN_EMMET_CORE_VERSION"
+    [[ "$installed_pymatgen" == "$MATTERGEN_PYMATGEN_VERSION" ]] \
+        || fail "MatterGen environment has pymatgen $installed_pymatgen; expected $MATTERGEN_PYMATGEN_VERSION"
+}
+
 require_command git
 require_command "$PYTHON_BIN"
 
@@ -317,6 +347,13 @@ else
         --find-links "$PYG_WHEEL_URL" "$MATTERGEN_SOURCE"
 fi
 
+# MatterGen's lower-bound requirements otherwise allow pip to combine its
+# 1.0.3 code with a newer emmet-core that imports a different Pymatgen API.
+# Install the compatible pair explicitly so rerunning this script also repairs
+# an already-created environment.
+enforce_mattergen_api_versions
+check_mattergen_api_versions
+
 make_venv "$VSBTOOLS_VENV"
 VSBTOOLS_PYTHON="$VSBTOOLS_VENV/bin/python"
 
@@ -363,6 +400,21 @@ enforce_numpy_version "$MATTERGEN_PYTHON" "MatterGen"
 enforce_numpy_version "$VSBTOOLS_PYTHON" "VSBTools"
 check_numpy_version "$MATTERGEN_PYTHON" "MatterGen"
 check_numpy_version "$VSBTOOLS_PYTHON" "VSBTools"
+
+log "Validating MatterGen CLI imports"
+"$MATTERGEN_PYTHON" - <<'PY'
+from importlib.metadata import version
+from pathlib import Path
+
+import mattergen
+from mattergen.scripts.generate import _main
+import torch
+
+print("mattergen:", Path(mattergen.__file__).resolve())
+print("emmet-core:", version("emmet-core"))
+print("pymatgen:", version("pymatgen"))
+print("torch:", torch.__version__)
+PY
 
 MATTERGEN_IMPORT_ROOT="$("$MATTERGEN_PYTHON" - <<'PY'
 from pathlib import Path
@@ -416,6 +468,8 @@ ENV_FILE="$ENV_ROOT/workflow_env.sh"
     printf 'export VSBTOOLS_PYTHON=%q\n' "$VSBTOOLS_PYTHON"
     printf 'export MATTERGEN_PYTHON=%q\n' "$MATTERGEN_PYTHON"
     printf 'export GRACE_PYTHON=%q\n' "$GRACE_PYTHON"
+    printf 'export MATTERGEN_EMMET_CORE_VERSION=%q\n' "$MATTERGEN_EMMET_CORE_VERSION"
+    printf 'export MATTERGEN_PYMATGEN_VERSION=%q\n' "$MATTERGEN_PYMATGEN_VERSION"
     printf 'export MATTERGEN_PYTHON_PATH=%q\n' "$MATTERGEN_IMPORT_ROOT"
     printf 'export SCOUT_MATTER_SITE_PACKAGES=%q\n' "$MATTERGEN_SITE_PACKAGES"
     printf 'export VSBTOOLS_EXTERNAL_PATHS_CONFIG=%q\n' \
@@ -442,7 +496,9 @@ cat > "$MANIFEST" <<EOF
   "mattergen_python": "$MATTERGEN_PYTHON",
   "grace_python": "$GRACE_PYTHON",
   "pytorch_version": "$PYTORCH_VERSION",
-  "numpy_version": "$NUMPY_VERSION"
+  "numpy_version": "$NUMPY_VERSION",
+  "mattergen_emmet_core_version": "$MATTERGEN_EMMET_CORE_VERSION",
+  "mattergen_pymatgen_version": "$MATTERGEN_PYMATGEN_VERSION"
 }
 EOF
 

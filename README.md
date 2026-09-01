@@ -149,6 +149,15 @@ bash "$CODE_ROOT/vsbtools/install_vsbtools_mattergen.sh" \
 Use `--vsbtools-ref BRANCH`, `--mattergen-ref BRANCH`, and optionally `--fetch`
 to select source branches during installation.
 
+The installer pins the MatterGen environment to a compatible
+`emmet-core`/`pymatgen` pair (`0.84.9` and `2024.10.29` by default). This is
+necessary because MatterGen's lower-bound requirements can otherwise resolve a
+newer API pair. If an existing environment reports an error such as
+`No module named pymatgen.core.graphs`, rerun the installer; it repairs the
+pair and validates `mattergen.scripts.generate` before reporting success.
+Advanced users can override the defaults with
+`MATTERGEN_EMMET_CORE_VERSION` and `MATTERGEN_PYMATGEN_VERSION`.
+
 ### Choosing editable or regular installation
 
 If you want to try another branch and can reuse the current environment, use

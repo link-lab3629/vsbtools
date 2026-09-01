@@ -153,6 +153,12 @@ first and fast-forward an existing local branch when possible. Ref selection
 requires clean checkouts. Resolved branches and commits are saved in
 `installation_manifest.json`.
 
+The installer also pins the MatterGen environment to the compatible
+`emmet-core`/`pymatgen` pair `0.84.9`/`2024.10.29`. If an existing environment
+reports `No module named pymatgen.core.graphs`, rerun the installer: it repairs
+the package pair and imports `mattergen.scripts.generate` as part of its
+validation.
+
 ### 1.5 Choose editable or regular installation
 
 Use `--editable` for development or branch comparisons. Python imports live
