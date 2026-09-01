@@ -10,9 +10,9 @@ system, species, target, GPU number, and guidance weights for the experiment.
 
 ## 0. Prepare Linux or macOS
 
-Run all commands in a terminal. Python 3.11 is recommended. Internet access is
-needed for GitHub repositories, Python packages, MatterGen checkpoints, GRACE,
-and OPTIMADE data.
+Run all commands in a terminal. The installer accepts Python 3.11 or newer.
+Internet access is needed for GitHub repositories, Python packages, MatterGen
+checkpoints, GRACE, and OPTIMADE data.
 
 On Linux, an NVIDIA GPU is strongly recommended; the installer uses CUDA 11.8
 PyTorch wheels by default. On macOS, the installer selects CPU-compatible
@@ -38,12 +38,12 @@ macOS with Homebrew:
 
 ```bash
 xcode-select --install
-brew install git python@3.11
+brew install git python
 ```
 
 If the Xcode command reports that the command-line tools are already installed,
 continue with the next step. Conda users can skip the Homebrew Python install;
-the Conda environment below supplies Python 3.11 and Git.
+the Conda environment below supplies a suitable Python and Git.
 
 ### 0.2 Separate installed software from generated work
 
@@ -88,7 +88,6 @@ provides the Python interpreter used by the installer.
 #### Option A: `python3 -m venv`
 
 ```bash
-# On macOS with Homebrew, use python3.11 here if python3 is another version.
 python3 -m venv "$CODE_ROOT/bootstrap-venv"
 source "$CODE_ROOT/bootstrap-venv/bin/activate"
 python -m pip install --upgrade pip
@@ -101,7 +100,7 @@ export PYTHON_FOR_SETUP="$CODE_ROOT/bootstrap-venv/bin/python"
 Use this option when Conda or Miniconda is already installed:
 
 ```bash
-conda create -n mattergen-bootstrap python=3.11 pip git -y
+conda create -n mattergen-bootstrap python=3.12 pip git -y
 conda activate mattergen-bootstrap
 
 export PYTHON_FOR_SETUP="$CONDA_PREFIX/bin/python"
@@ -114,9 +113,8 @@ git --version
 "$PYTHON_FOR_SETUP" --version
 ```
 
-If the standard `python3` command is newer than the workflow supports, use the
-Python 3.11 venv or Conda option above and pass that interpreter to the
-installer.
+The reported Python version must be 3.11 or newer. A system Python 3.12 can be
+passed directly to the installer through `PYTHON_FOR_SETUP`.
 
 The next installer creates three independent environments under
 `$CODE_ROOT/workflow-env/venvs/`: `vsbtools`, `scout-matter`, and `grace`. Keep

@@ -111,24 +111,23 @@ git clone https://github.com/link-lab3629/scout-matter.git ../scout-matter
 bash ./install_vsbtools_mattergen.sh \
   --mattergen-source ../scout-matter \
   --env-root ../workflow-env \
-  --python python3.11 \
+  --python python3 \
   --editable
 ```
 
-The MatterGen installer accepts Python 3.10 or 3.11 for the bootstrap
-interpreter. The standalone `vsbtools` package supports newer Python versions,
-but a Python 3.12-or-newer interpreter must not be passed to this installer.
-Check the selected interpreter before running it:
+The MatterGen installer accepts Python 3.11 or newer for the bootstrap
+interpreter. Use the system `python3`, a virtual environment, or a Conda
+environment, provided that its reported version is at least 3.11:
 
 ```bash
 "$PYTHON_FOR_SETUP" --version
 ```
 
-When using a bootstrap virtual environment, create it with an installed
-Python 3.10 or 3.11 executable, for example:
+When using a bootstrap virtual environment, the standard `python3` executable
+is sufficient when it is version 3.11 or newer:
 
 ```bash
-python3.11 -m venv "$CODE_ROOT/bootstrap-venv"
+python3 -m venv "$CODE_ROOT/bootstrap-venv"
 source "$CODE_ROOT/bootstrap-venv/bin/activate"
 export PYTHON_FOR_SETUP="$CODE_ROOT/bootstrap-venv/bin/python"
 ```
@@ -200,8 +199,7 @@ for stage_name, dataset in pipeline.run():
 ## Installation
 
 Python 3.10 or newer is required for the standalone `vsbtools` package. The
-MatterGen workflow installer has the narrower Python 3.10/3.11 requirement
-described above.
+MatterGen workflow installer requires Python 3.11 or newer as described above.
 
 ```bash
 python3 -m pip install -e .

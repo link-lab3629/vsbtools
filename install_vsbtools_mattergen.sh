@@ -33,7 +33,7 @@ Options:
   --vsbtools-source PATH   VSBTools checkout (default: directory containing this script)
   --mattergen-source PATH  scout-matter/MatterGen checkout (default: sibling scout-matter)
   --env-root PATH          Environment root (default: sibling workflow-env)
-  --python PATH            Python 3.10 or 3.11 used to create environments
+  --python PATH            Python 3.11 or newer used to create environments
   --vsbtools-ref REF       VSBTools branch, tag, or commit to check out
   --mattergen-ref REF      MatterGen branch, tag, or commit to check out
   --fetch                  Fetch origin before resolving requested refs; local
@@ -226,10 +226,10 @@ checkout_source_ref "$MATTERGEN_SOURCE" "$MATTERGEN_REF" "MatterGen"
 
 if ! "$PYTHON_BIN" - <<'PY'
 import sys
-raise SystemExit(0 if (3, 10) <= sys.version_info[:2] <= (3, 11) else 1)
+raise SystemExit(0 if sys.version_info[:2] >= (3, 11) else 1)
 PY
 then
-    fail "$PYTHON_BIN must be Python 3.10 or 3.11"
+    fail "$PYTHON_BIN must be Python 3.11 or newer"
 fi
 
 HOST_OS="$(uname -s)"
