@@ -158,43 +158,24 @@ bash setup_reproducibility_envs.sh \
   --force
 ```
 
-## Manual Configuration
+## External environment discovery
 
-If you already have the three environments, open the notebook in a `vsbtools`
-kernel and set the first code cell:
+The notebook has no environment-path fields to edit. When its kernel comes from
+the installer-managed `venvs/vsbtools` environment, VSBTools automatically
+discovers the sibling `venvs/scout-matter` and `venvs/grace` environments. The
+generated launcher also exports their exact paths.
 
-```python
-MATTERGEN_ENV = Path("/path/to/scout-matter-or-venv")
-GRACE_ENV = Path("/path/to/grace-venv-or-bin-python")
-```
-
-`MATTERGEN_ENV` may point to:
-
-- a `scout-matter` source tree,
-- a `scout-matter` virtual environment root,
-- that virtual environment's Python executable,
-- or an import root/site-packages directory containing `mattergen`.
-
-For a MatterGen venv, the notebook resolves editable installs to their source
-tree and separately exposes the venv's site-packages dependencies, matching the
-behavior of the contained setup script.
-
-`GRACE_ENV` may point to:
-
-- a GRACE/tensorpotential virtual environment root,
-- or that virtual environment's `bin/python`.
-
-If these notebook variables are `None`, `vsbtools` falls back to:
+For a custom installation layout, set these variables in the environment that
+launches Jupyter:
 
 ```text
 MATTERGEN_PYTHON_PATH
 SCOUT_MATTER_SITE_PACKAGES
 GRACE_PYTHON
-~/.config/vsbtools/external_paths.json
 ```
 
-The contained setup script avoids those global fallbacks by exporting explicit
-paths only inside its launcher environment.
+Persistent custom paths may instead be stored in
+`~/.config/vsbtools/external_paths.json`.
 
 ## Expected Outputs
 

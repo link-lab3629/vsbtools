@@ -90,6 +90,42 @@ class NotebookSetupTest(unittest.TestCase):
             self.assertEqual(result.mattergen_site_packages, site_packages)
             self.assertEqual(result.grace_python, grace_python)
 
+    def test_none_discovers_sibling_installer_environments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            venvs = root / "venvs"
+            vsbtools_venv = venvs / "vsbtools"
+            scout_venv = venvs / "scout-matter"
+            grace_venv = venvs / "grace"
+            for venv in (vsbtools_venv, scout_venv, grace_venv):
+                (venv / "bin").mkdir(parents=True)
+                (venv / "bin" / "python").touch()
+                (venv / "pyvenv.cfg").touch()
+
+            import_root = root / "scout-matter-source"
+            (import_root / "mattergen").mkdir(parents=True)
+            site_packages = scout_venv / "lib" / "python3.12" / "site-packages"
+            site_packages.mkdir(parents=True)
+            completed = [
+                Mock(returncode=0, stdout=f"{import_root}\n", stderr=""),
+                Mock(returncode=0, stdout=f"{site_packages}\n", stderr=""),
+            ]
+
+            with patch.dict(os.environ, {}, clear=True), patch(
+                "vsbtools.materials_dataset.notebook_setup.sys.prefix",
+                vsbtools_venv.as_posix(),
+            ), patch(
+                "vsbtools.materials_dataset.notebook_setup.subprocess.run",
+                side_effect=completed,
+            ):
+                result = configure_notebook_external_environments(
+                    quiet_optional_imports=False,
+                )
+
+            self.assertEqual(result.mattergen_import_root, import_root)
+            self.assertEqual(result.mattergen_site_packages, site_packages)
+            self.assertEqual(result.grace_python, grace_venv / "bin" / "python")
+
 
 if __name__ == "__main__":
     unittest.main()
