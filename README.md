@@ -228,7 +228,8 @@ for generation, postprocessing, Pareto fronts, and distribution plots.
 The end-to-end guide also shows how to keep one work tree per system and save a
 provenance record under each generation's
 `WORK_ROOT/<system>/raw-generations/<mode>/gen_N/provenance/` directory before
-archiving that system's results.
+archiving that system's results. Each `gen_N` groups one generation setting;
+use a new `gen_N` when guidance, targets, or other meaningful settings change.
 
 A packaged reproducibility pipeline is provided for the MatterGen guidance
 analysis workflow. It starts from the raw-generation archives in

@@ -223,7 +223,7 @@ Verify that the separate GRACE interpreter can load its calculator:
 The first energy-estimation run may download the GRACE model, so keep internet
 access available or provide a cached model.
 
-To create GRACE manually instead:
+To create GRACE environment manually instead:
 
 ```bash
 "$PYTHON_FOR_SETUP" -m venv "$CODE_ROOT/workflow-env/venvs/grace"
@@ -276,27 +276,45 @@ source "$INSTALL_ROOT/venvs/scout-matter/bin/activate"
 ```
 
 Repeat this block with a new `SYSTEM` value for every chemical system.
+Generation numbering restarts under each mode, so `non_guided/gen_1` and
+`repeated-guided/gen_1` are separate settings.
 
-Use `gen_N` for one generation campaign. A campaign that contains separate
-outputs can use `batch_N` below it. A `multiple_runs.sh` campaign keeps the
-script's own `run_N` directories inside its `gen_N` directory.
+Use `gen_N` for one homogeneous generation setting. Every structure below one
+`gen_N` must have the same meaningful settings: chemical system, checkpoint,
+guidance type and parameters, targets, guidance/loss weights, algorithm, and
+the code version that affects generation. Execution details such as batch size,
+number of batches or runs, GPU and memory allocation, output paths, and OOM
+retry settings may vary. Create a new `gen_N` whenever a meaningful setting
+changes, especially the guidance objective or target.
+
+There are two ways to repeat one setting:
+
+| Output | How it is produced | Meaning |
+| --- | --- | --- |
+| `batch_N/` | Separate direct `mattergen-generate` invocations | One manually named repeat; keep the invocation settings identical. |
+| `results/.../run_N/` | `multiple_runs.sh --runs N` | One independent MatterGen invocation per run, with OOM retry handling. |
+
+The direct MatterGen option `--num_batches` controls batches inside one
+invocation and does not create a new generation setting. `batch_N` and `run_N`
+are both repeat directories; they may coexist under one `gen_N` only when their
+meaningful settings match.
 
 ```text
 work/
 ├── Ni-Pd-H/
 │   ├── raw-generations/
 │   │   ├── non_guided/
-│   │   │   ├── gen_1/              # contains provenance/
+│   │   │   ├── gen_1/              # one non-guided setting
 │   │   │   │   ├── generated_crystals.extxyz
 │   │   │   │   ├── input_parameters.txt
 │   │   │   │   └── provenance/       # installation manifest and source state
-│   │   │   └── gen_2/              # contains provenance/
+│   │   │   └── gen_2/              # another non-guided setting; contains provenance/
 │   │   └── repeated-guided/
-│   │       ├── gen_1/              # multi-batch; contains provenance/
+│   │       ├── gen_1/              # ranked-softplus setting
 │   │       │   ├── batch_1/
 │   │       │   ├── batch_2/
 │   │       │   └── provenance/       # installation manifest and source state
-│   │       └── gen_2/              # multiple_runs.sh; contains provenance/
+│   │       └── gen_2/              # mean-coordination setting
 │   │           ├── results/.../run_1/
 │   │           ├── results/.../run_2/
 │   │           └── provenance/       # installation manifest and source state
@@ -306,11 +324,11 @@ work/
 └── Mg-B-H/
     ├── raw-generations/
     │   ├── non_guided/
-    │   │   ├── gen_1/              # contains provenance/
-    │   │   └── gen_2/              # contains provenance/
+    │   │   ├── gen_1/              # one non-guided setting
+    │   │   └── gen_2/              # another non-guided setting
     │   └── repeated-guided/
-    │       ├── gen_1/              # contains provenance/
-    │       └── gen_2/              # contains provenance/
+    │       ├── gen_1/              # one homogeneous guided setting
+    │       └── gen_2/              # another homogeneous guided setting
     ├── configs/
     ├── logs/
     └── analysis-run/
@@ -336,71 +354,50 @@ mattergen-generate "$GEN_ROOT" \
   --force_gpu=0
 ```
 
-#### 2.2.2 Guided batches
+#### 2.2.2 Repeated direct outputs with ranked-softplus guidance
 
-The following two batches form `repeated-guided/gen_1`. They share one
-installation and differ in guidance only. Use a new `gen_N` for a different
-code or settings combination.
+These two direct outputs share the same ranked-softplus settings and therefore
+belong to one homogeneous generation group, `repeated-guided/gen_1`. Use a new `gen_N`
+for a different guidance objective, target, or other meaningful setting.
 
 ```bash
 GEN_ROOT="$RAW_ROOT/repeated-guided/gen_1"
 ```
 
 `ranked_coordination` applies the ranked-neighbor softplus objective. The
-grouped center `[Pd,Ni]` is one coordination constraint.
+grouped center `[Pd,Ni]` is one coordination constraint. The loop changes only
+the output directory, creating `batch_1` and `batch_2` with the same settings.
 
 ```bash
-mattergen-generate "$GEN_ROOT/batch_1" \
-  --pretrained-name=chemical_system \
-  --batch_size=20 \
-  --num_batches=1 \
-  --properties_to_condition_on="{'chemical_system':'Ni-Pd-H'}" \
-  --diffusion_guidance_factor=2.0 \
-  --guidance="{'ranked_coordination': {'margin':0.05, 'temperature':0.10, 'alpha':2.0, 'cn_tolerance':0.4, 'cn_temperature':0.05, 'satisfaction_weight':1.0, '[Pd,Ni]-H':6}}" \
-  --diffusion_loss_weight="[0.01,0.01,True]" \
-  --self_rec_steps=3 \
-  --back_step=2 \
-  --algo=1 \
-  --record_trajectories=False \
-  --print_loss=False \
-  --force_gpu=0
+for BATCH in 1 2; do
+  mattergen-generate "$GEN_ROOT/batch_$BATCH" \
+    --pretrained-name=chemical_system \
+    --batch_size=20 \
+    --num_batches=1 \
+    --properties_to_condition_on="{'chemical_system':'Ni-Pd-H'}" \
+    --diffusion_guidance_factor=2.0 \
+    --guidance="{'ranked_coordination': {'margin':0.05, 'temperature':0.10, 'alpha':2.0, 'cn_tolerance':0.4, 'cn_temperature':0.05, 'satisfaction_weight':1.0, '[Pd,Ni]-H':6}}" \
+    --diffusion_loss_weight="[0.01,0.01,True]" \
+    --self_rec_steps=3 \
+    --back_step=2 \
+    --algo=1 \
+    --record_trajectories=False \
+    --print_loss=False \
+    --force_gpu=0
+done
 ```
 
-The mean group-coordination batch uses the current `mean_coordination` objective.
-`group_coordination` remains a compatibility alias.
+Every direct output must retain `generated_crystals.extxyz` and
+`input_parameters.txt`. Treat these weights as starting values and calibrate
+the objectives independently. Reduce `--batch_size` if GPU memory is
+insufficient.
 
-```bash
-mattergen-generate "$GEN_ROOT/batch_2" \
-  --pretrained-name=chemical_system \
-  --batch_size=20 \
-  --num_batches=1 \
-  --properties_to_condition_on="{'chemical_system':'Ni-Pd-H'}" \
-  --diffusion_guidance_factor=2.0 \
-  --guidance="{'mean_coordination': {'mode':'huber', 'alpha':3.0, '[Pd,Ni]-H':6}}" \
-  --diffusion_loss_weight="[0.01,0.01,True]" \
-  --self_rec_steps=3 \
-  --back_step=2 \
-  --algo=1 \
-  --record_trajectories=False \
-  --print_loss=False \
-  --force_gpu=0
-```
+#### 2.2.3 Repeat one setting with `multiple_runs.sh`
 
-Each output directory must retain both files:
-
-```text
-generated_crystals.extxyz
-input_parameters.txt
-```
-
-Treat these weights as starting values and calibrate the two objectives
-independently. Reduce `--batch_size` if GPU memory is insufficient.
-
-#### 2.2.3 Repeated guided campaigns
-
-Use scout-matter's root-level `multiple_runs.sh` for independent guided runs.
-It invokes `mattergen-generate` per run, retries CUDA out-of-memory failures
-with a smaller batch, records durations, and writes an aggregate `.extxyz`.
+Use scout-matter's root-level `multiple_runs.sh` for independent repeats of one
+guided setting. It invokes `mattergen-generate` per run, retries CUDA
+out-of-memory failures with a smaller batch, records durations, and writes an
+aggregate `.extxyz`.
 
 Activate the selected MatterGen environment and enter the source repository;
 `multiple_runs.sh` is at its root:
@@ -412,7 +409,9 @@ cd "$CODE_ROOT/scout-matter"
 ./multiple_runs.sh --help
 ```
 
-This command stores a fifty-run mean group-coordination campaign in `gen_2`:
+This is a separate setting from the ranked-softplus generation group above, so it uses
+`repeated-guided/gen_2`. All fifty runs share the same mean group-coordination
+settings; `run_N` only identifies the independent repeat.
 
 ```bash
 GEN_ROOT="$RAW_ROOT/repeated-guided/gen_2"
@@ -441,8 +440,10 @@ controls are:
 - `--num-batches`: batches generated within each independent run.
 - `--runs`: number of independent runs.
 
-For ranked-neighbor softplus, change `--guidance` above or create
-`$CONFIG_ROOT/repeated-ranked-softplus.yaml`:
+`group_coordination` remains a compatibility alias for `mean_coordination`.
+The same `gen_2` setting can be supplied through YAML. Choose this YAML command
+or the CLI command above; use a new `gen_N` if the guidance or another
+meaningful setting changes.
 
 ```yaml
 batch_size: 20
@@ -451,14 +452,10 @@ runs: 50
 system: Ni-Pd-H
 
 guidance:
-  type: ranked_coordination
+  type: mean_coordination
   parameters:
-    margin: 0.05
-    temperature: 0.10
-    alpha: 2.0
-    cn_tolerance: 0.4
-    cn_temperature: 0.05
-    satisfaction_weight: 1.0
+    mode: huber
+    alpha: 3.0
     "[Pd,Ni]-H": 6
   settings:
     forward_weight: 0.01
@@ -477,20 +474,21 @@ min_batch_size: 1
 oom_wait_seconds: 10
 
 # These paths lead from code/scout-matter into the Ni-Pd-H work tree.
-base_dir: ../../work/Ni-Pd-H/raw-generations/repeated-guided/gen_3
-log_file: ../../work/Ni-Pd-H/logs/ranked-softplus.log
+base_dir: ../../work/Ni-Pd-H/raw-generations/repeated-guided/gen_2
+log_file: ../../work/Ni-Pd-H/logs/group-coordination-yaml.log
 dry_run: false
 ```
 
-Run the YAML configuration as the only command-line option:
+Save the YAML as `$CONFIG_ROOT/group-coordination.yaml`, then run it as the only
+command-line option:
 
 ```bash
-GEN_ROOT="$RAW_ROOT/repeated-guided/gen_3"
-./multiple_runs.sh --config "$CONFIG_ROOT/repeated-ranked-softplus.yaml"
+./multiple_runs.sh --config "$CONFIG_ROOT/group-coordination.yaml"
 ```
 
-Use a new `gen_N` for each independent campaign. Match the campaign directory to
-the YAML `base_dir`.
+Match the homogeneous generation directory to the YAML `base_dir`. If the
+preceding CLI command was used, do not run this YAML command as a second
+setting; it is an alternative way to repeat the same `gen_2` setting.
 
 On out-of-memory, the script retries with
 `ceil(current_batch_size * oom_backoff_percent / 100)`. It stops after
@@ -513,15 +511,15 @@ $RAW_ROOT/repeated-guided/gen_2/results/Ni-Pd-H/<guidance>/<parameters>/<setting
     └── ...
 ```
 
-For a `multiple_runs.sh` campaign, process each `run_N/` directory once. The
+For a `multiple_runs.sh` generation, process each `run_N/` directory once. The
 parent settings directory contains an aggregate `generated_crystals.extxyz`;
 do not process it as an additional batch.
 
 ### 2.3 Record provenance for each generation
 
-Place one provenance record in each campaign's `gen_N` directory. A multi-batch
-campaign shares that record across its `batch_N` directories; a
-`multiple_runs.sh` campaign shares it across its `run_N` directories.
+Place one provenance record in each `gen_N`. It covers all `batch_N` or `run_N`
+outputs inside that directory. Create a new `gen_N` whenever a meaningful
+generation setting changes.
 
 Define this helper once:
 
@@ -571,7 +569,7 @@ record_generation_provenance \
   "$VSBTOOLS_SOURCE" \
   "$MATTERGEN_SOURCE"
 
-# The two direct guided batches in repeated-guided/gen_1
+# The ranked-softplus setting in repeated-guided/gen_1
 GEN_ROOT="$RAW_ROOT/repeated-guided/gen_1"
 record_generation_provenance \
   "$GEN_ROOT" \
@@ -579,19 +577,9 @@ record_generation_provenance \
   "$VSBTOOLS_SOURCE" \
   "$MATTERGEN_SOURCE"
 
-# The multiple_runs.sh campaign in repeated-guided/gen_2
+# The mean-coordination setting in repeated-guided/gen_2
+# (use once before the selected CLI or YAML command)
 GEN_ROOT="$RAW_ROOT/repeated-guided/gen_2"
-record_generation_provenance \
-  "$GEN_ROOT" \
-  "$INSTALL_ROOT" \
-  "$VSBTOOLS_SOURCE" \
-  "$MATTERGEN_SOURCE"
-```
-
-For the YAML campaign, use the `gen_N` directory specified by `base_dir`:
-
-```bash
-GEN_ROOT="$RAW_ROOT/repeated-guided/gen_3"
 record_generation_provenance \
   "$GEN_ROOT" \
   "$INSTALL_ROOT" \
@@ -650,13 +638,13 @@ generation_dirs = [
     for path in (RAW_ROOT / "non_guided").glob("gen_*")
     if path.is_dir()
 ]
-for campaign_root in sorted((RAW_ROOT / "repeated-guided").glob("gen_*")):
+for generation_root in sorted((RAW_ROOT / "repeated-guided").glob("gen_*")):
     generation_dirs.extend(
-        path for path in campaign_root.glob("batch_*") if path.is_dir()
+        path for path in generation_root.glob("batch_*") if path.is_dir()
     )
     generation_dirs.extend(
         path.parent
-        for path in campaign_root.glob("results/**/run_*/input_parameters.txt")
+        for path in generation_root.glob("results/**/run_*/input_parameters.txt")
     )
 generation_dirs = sorted(set(generation_dirs))
 if not generation_dirs:
