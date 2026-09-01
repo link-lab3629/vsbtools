@@ -3,8 +3,7 @@
 This guide has two parts:
 
 1. install the software under `CODE_ROOT`;
-2. create one work tree per chemical system under `WORK_ROOT`, generate batches,
-   and postprocess them.
+2. organize `WORK_ROOT` by chemical system, then generate and postprocess.
 
 The examples use `Ni-Pd-H` and target `CN([Pd,Ni]-H) = 6`. Replace the system,
 species, target, GPU, and guidance settings as needed.
@@ -13,9 +12,9 @@ species, target, GPU, and guidance settings as needed.
 
 ### 1.1 Prepare Linux or macOS
 
-Run all commands in a terminal. The installer accepts Python 3.11 or newer.
-Internet access is needed for GitHub repositories, Python packages, MatterGen
-checkpoints, GRACE, and OPTIMADE data.
+Run these commands in a terminal. The installer requires Python 3.11 or newer.
+Internet access is needed for GitHub, Python packages, MatterGen checkpoints,
+GRACE, and OPTIMADE data.
 
 On Linux, an NVIDIA GPU is strongly recommended; the installer uses CUDA 11.8
 PyTorch wheels by default. On macOS, the installer selects CPU-compatible
@@ -44,13 +43,12 @@ xcode-select --install
 brew install git python
 ```
 
-If the Xcode command reports that the command-line tools are already installed,
-continue with the next step. Conda users can skip the Homebrew Python install;
-the Conda environment below supplies a suitable Python and Git.
+If Xcode command-line tools are already installed, continue. Conda users can
+skip the Homebrew Python install; the Conda environment supplies Python and Git.
 
 ### 1.2 Set up the code root
 
-Choose a parent directory and define the project and code roots:
+Choose a parent directory and define the project, code, and work roots:
 
 ```bash
 export PROJECT_ROOT="$PWD/mattergen-project"
@@ -73,13 +71,13 @@ mattergen-project/
 └── work/                         # one directory per chemical system
 ```
 
-`CODE_ROOT` contains reinstallable software. `WORK_ROOT` contains experiment
-inputs and results. In a new terminal, repeat the three exports above.
+`CODE_ROOT` holds the software. `WORK_ROOT` holds experiment inputs and results.
+Repeat the exports in each new terminal.
 
 ### 1.3 Create a bootstrap environment
 
-Choose either standard Python `venv` or Conda. This bootstrap environment only
-provides the Python interpreter used by the installer.
+Choose standard Python `venv` or Conda. This environment only supplies the
+installer's Python interpreter.
 
 #### Option A: `python3 -m venv`
 
@@ -93,7 +91,7 @@ export PYTHON_FOR_SETUP="$CODE_ROOT/bootstrap-venv/bin/python"
 
 #### Option B: Conda
 
-Use this option when Conda or Miniconda is already installed:
+Use this option if Conda or Miniconda is installed:
 
 ```bash
 conda create -n mattergen-bootstrap python=3.12 pip git -y
@@ -109,12 +107,12 @@ git --version
 "$PYTHON_FOR_SETUP" --version
 ```
 
-The reported Python version must be 3.11 or newer. A system Python 3.12 can be
-passed directly to the installer through `PYTHON_FOR_SETUP`.
+The reported Python version must be 3.11 or newer. You can also point
+`PYTHON_FOR_SETUP` directly at any suitable system interpreter.
 
-The next installer creates three independent environments under
-`$CODE_ROOT/workflow-env/venvs/`: `vsbtools`, `scout-matter`, and `grace`. Keep
-the bootstrap environment active only while running the installer.
+The installer creates `vsbtools`, `scout-matter`, and `grace` environments under
+`$CODE_ROOT/workflow-env/venvs/`. Keep the bootstrap environment active while
+running it.
 
 ### 1.4 Install VSBTools and MatterGen
 
@@ -133,8 +131,8 @@ bash "$CODE_ROOT/vsbtools/install_vsbtools_mattergen.sh" \
   --editable
 ```
 
-The installer creates persistent VSBTools, MatterGen, and GRACE environments.
-Running it again updates them from the selected source checkouts.
+The installer creates persistent VSBTools, MatterGen, and GRACE environments;
+rerunning it updates them from the selected checkouts.
 
 To install selected branches, add one or both ref options:
 
@@ -150,21 +148,20 @@ bash "$CODE_ROOT/vsbtools/install_vsbtools_mattergen.sh" \
   --editable
 ```
 
-The ref values may be branch names, tags, or commit hashes. `--fetch` is
-optional; include it to fetch `origin` first and fast-forward an existing local
-branch when possible. Ref selection requires a clean checkout and stops before
-changing branches when tracked, staged, or untracked files are present. The
-resolved branches and commits are saved in `installation_manifest.json`.
+Each ref may be a branch, tag, or commit hash. Add `--fetch` to fetch `origin`
+first and fast-forward an existing local branch when possible. Ref selection
+requires clean checkouts. Resolved branches and commits are saved in
+`installation_manifest.json`.
 
 ### 1.5 Choose editable or regular installation
 
-Use `--editable` while developing or comparing source branches in a reusable
-checkout. Python imports the live files from the Git checkouts; restart Python
-or Jupyter after changing branches or source files. Re-run the installer when
-dependencies or installation metadata change.
+Use `--editable` for development or branch comparisons. Python imports live
+files from the checkouts, so restart Python or Jupyter after changing branches
+or source files. Rerun the installer when dependencies or installation metadata
+change.
 
-Use `--regular` for a fixed copy of a branch. Give each independent snapshot a
-separate environment root:
+Use `--regular` for a fixed copy of a branch. Give each snapshot its own
+environment root:
 
 ```bash
 bash "$CODE_ROOT/vsbtools/install_vsbtools_mattergen.sh" \
@@ -175,17 +172,17 @@ bash "$CODE_ROOT/vsbtools/install_vsbtools_mattergen.sh" \
   --regular
 ```
 
-The regular installation copies package code into its environments, so later
-checkout edits do not affect it. The installer records the selected commits in
-`installation_manifest.json`. For the packaged demonstration notebook, use the
-separate `vsbtools/materials_dataset/Examples/setup_reproducibility_envs.sh`;
-it creates its own contained environments and outputs.
+The regular installation copies package code into its environments. The
+installer records the selected commits in `installation_manifest.json`. For the
+packaged demonstration notebook, use the separate
+`vsbtools/materials_dataset/Examples/setup_reproducibility_envs.sh`; it creates
+its own contained environments and outputs.
 
 ### 1.6 Select an installed environment
 
-Each installation root has its own `workflow_env.sh`, VSBTools environment,
-MatterGen environment, and GRACE environment. Select one installation in a
-fresh shell (or deactivate the current virtual environment).
+Each installation root has its own `workflow_env.sh` and three runtime
+environments. Select the desired root in a fresh shell (or deactivate the
+current virtual environment).
 
 For the editable installation:
 
@@ -201,16 +198,16 @@ source "$CODE_ROOT/workflow-env-regular/workflow_env.sh"
 source "$CODE_ROOT/workflow-env-regular/venvs/scout-matter/bin/activate"
 ```
 
-Use one block per shell. The generated `workflow_env.sh` selects the Python
-paths for VSBTools, MatterGen, and GRACE; it does not perform an installation.
-Launch Jupyter with the matching `launch_jupyter.sh`; use the matching
-`venvs/scout-matter/bin/mattergen-generate` for generation and
-`venvs/vsbtools/bin/python` for analysis.
+Use one block per shell. `workflow_env.sh` selects the matching Python paths;
+it does not install anything. Use the same root's `launch_jupyter.sh`,
+`venvs/scout-matter/bin/mattergen-generate`, and `venvs/vsbtools/bin/python`.
 
 ### 1.7 Install and verify GRACE/tensorpotential
 
-GRACE is provided through the `tensorpotential` package. The reusable installer
-creates `$CODE_ROOT/workflow-env/venvs/grace` and runs the equivalent of:
+GRACE is provided through `tensorpotential`. The installer creates
+`$CODE_ROOT/workflow-env/venvs/grace`. The commands below use the default
+editable installation root; replace `$CODE_ROOT/workflow-env` with the selected
+`--env-root` when it differs.
 
 ```bash
 "$CODE_ROOT/workflow-env/venvs/grace/bin/python" -m pip install "ase<3.26" tensorpotential
@@ -223,10 +220,10 @@ Verify that the separate GRACE interpreter can load its calculator:
   "import tensorpotential.calculator; print('GRACE/tensorpotential import OK')"
 ```
 
-The first energy-estimation run may download the selected GRACE model. Keep
-internet access available or provide an already cached model.
+The first energy-estimation run may download the GRACE model, so keep internet
+access available or provide a cached model.
 
-If the bundled setup script is not used, create the GRACE environment manually:
+To create GRACE manually instead:
 
 ```bash
 "$PYTHON_FOR_SETUP" -m venv "$CODE_ROOT/workflow-env/venvs/grace"
@@ -238,8 +235,8 @@ export GRACE_PYTHON="$CODE_ROOT/workflow-env/venvs/grace/bin/python"
   "import tensorpotential.calculator; print('GRACE/tensorpotential import OK')"
 ```
 
-The generated `workflow_env.sh` exports `GRACE_PYTHON`. Source that file when
-configuring another shell manually.
+Source the generated `workflow_env.sh` in another shell; it exports
+`GRACE_PYTHON`.
 
 The main executables are now:
 
@@ -255,8 +252,8 @@ $CODE_ROOT/workflow-env/launch_jupyter.sh
 
 ### 2.1 Create the system work tree
 
-Create one work tree per chemical system. Keep configurations, logs, raw
-generations, and analysis results inside that system's directory:
+Create one work tree per chemical system. Keep its configurations, logs, raw
+generations, and analysis results together:
 
 ```bash
 export SYSTEM="Ni-Pd-H"
@@ -265,17 +262,20 @@ export RAW_ROOT="$SYSTEM_ROOT/raw-generations"
 export CONFIG_ROOT="$SYSTEM_ROOT/configs"
 export LOG_ROOT="$SYSTEM_ROOT/logs"
 export ANALYSIS_ROOT="$SYSTEM_ROOT/analysis-run"
+# Use the source checkouts that produced INSTALL_ROOT.
 export VSBTOOLS_SOURCE="$CODE_ROOT/vsbtools"
 export MATTERGEN_SOURCE="$CODE_ROOT/scout-matter"
 
 mkdir -p "$RAW_ROOT/non_guided" "$RAW_ROOT/repeated-guided" \
   "$CONFIG_ROOT" "$LOG_ROOT" "$ANALYSIS_ROOT"
 
-# Select the installation for this system; use workflow-env-regular (or another
-# installed root) when this system should use a regular snapshot.
-export INSTALL_ROOT="$CODE_ROOT/workflow-env"
+# Select one runtime from Section 1.6.
+export INSTALL_ROOT="$CODE_ROOT/workflow-env"  # editable
+# export INSTALL_ROOT="$CODE_ROOT/workflow-env-regular"  # regular snapshot
 source "$INSTALL_ROOT/venvs/scout-matter/bin/activate"
 ```
+
+Repeat this block with a new `SYSTEM` value for every chemical system.
 
 Use `gen_N` for one generation campaign. A campaign that contains separate
 outputs can use `batch_N` below it. A `multiple_runs.sh` campaign keeps the
@@ -286,17 +286,17 @@ work/
 ├── Ni-Pd-H/
 │   ├── raw-generations/
 │   │   ├── non_guided/
-│   │   │   ├── gen_1/
+│   │   │   ├── gen_1/              # contains provenance/
 │   │   │   │   ├── generated_crystals.extxyz
 │   │   │   │   ├── input_parameters.txt
 │   │   │   │   └── provenance/       # installation manifest and source state
-│   │   │   └── gen_2/
+│   │   │   └── gen_2/              # contains provenance/
 │   │   └── repeated-guided/
-│   │       ├── gen_1/
+│   │       ├── gen_1/              # multi-batch; contains provenance/
 │   │       │   ├── batch_1/
 │   │       │   ├── batch_2/
 │   │       │   └── provenance/       # installation manifest and source state
-│   │       └── gen_2/
+│   │       └── gen_2/              # multiple_runs.sh; contains provenance/
 │   │           ├── results/.../run_1/
 │   │           ├── results/.../run_2/
 │   │           └── provenance/       # installation manifest and source state
@@ -305,6 +305,12 @@ work/
 │   └── analysis-run/
 └── Mg-B-H/
     ├── raw-generations/
+    │   ├── non_guided/
+    │   │   ├── gen_1/              # contains provenance/
+    │   │   └── gen_2/              # contains provenance/
+    │   └── repeated-guided/
+    │       ├── gen_1/              # contains provenance/
+    │       └── gen_2/              # contains provenance/
     ├── configs/
     ├── logs/
     └── analysis-run/
@@ -332,9 +338,9 @@ mattergen-generate "$GEN_ROOT" \
 
 #### 2.2.2 Guided batches
 
-The following two batches form `repeated-guided/gen_1`. They use the same code
-installation and differ only in the guidance objective. Put a new campaign in
-`gen_2`, with its own provenance directory, when its code or settings differ.
+The following two batches form `repeated-guided/gen_1`. They share one
+installation and differ in guidance only. Use a new `gen_N` for a different
+code or settings combination.
 
 ```bash
 GEN_ROOT="$RAW_ROOT/repeated-guided/gen_1"
@@ -387,19 +393,17 @@ generated_crystals.extxyz
 input_parameters.txt
 ```
 
-The weights above are starting values. Ranked-softplus has a different loss
-scale from sigmoid mean coordination and should be calibrated independently.
-If a batch runs out of GPU memory, reduce `--batch_size`.
+Treat these weights as starting values and calibrate the two objectives
+independently. Reduce `--batch_size` if GPU memory is insufficient.
 
 #### 2.2.3 Repeated guided campaigns
 
-Use scout-matter's root-level `multiple_runs.sh` for many independent guided
-runs. It invokes `mattergen-generate` once per run, retries CUDA out-of-memory
-failures with a smaller batch, records run durations, and combines the
-successful structures into one aggregate `.extxyz` file.
+Use scout-matter's root-level `multiple_runs.sh` for independent guided runs.
+It invokes `mattergen-generate` per run, retries CUDA out-of-memory failures
+with a smaller batch, records durations, and writes an aggregate `.extxyz`.
 
-The helper uses the selected MatterGen environment. Enter the source repository
-because `multiple_runs.sh` lives at its root:
+Activate the selected MatterGen environment and enter the source repository;
+`multiple_runs.sh` is at its root:
 
 ```bash
 source "$INSTALL_ROOT/venvs/scout-matter/bin/activate"
@@ -408,8 +412,7 @@ cd "$CODE_ROOT/scout-matter"
 ./multiple_runs.sh --help
 ```
 
-The following command stores one repeated-guided campaign in `gen_2` and
-repeats the mean group-coordination generation fifty times:
+This command stores a fifty-run mean group-coordination campaign in `gen_2`:
 
 ```bash
 GEN_ROOT="$RAW_ROOT/repeated-guided/gen_2"
@@ -431,16 +434,15 @@ GEN_ROOT="$RAW_ROOT/repeated-guided/gen_2"
   --log-file "$LOG_ROOT/group-coordination.log"
 ```
 
-Append `--dry-run` first to inspect every generated `mattergen-generate`
-command without starting generation. The important size controls are:
+Add `--dry-run` to inspect the generated commands before starting. The size
+controls are:
 
 - `--batch-size`: structures generated in each batch.
 - `--num-batches`: batches generated within each independent run.
 - `--runs`: number of independent runs.
 
-For ranked-neighbor softplus guidance, either change `--guidance` in the command
-above or use a YAML config. Create
-`$CONFIG_ROOT/repeated-ranked-softplus.yaml` with:
+For ranked-neighbor softplus, change `--guidance` above or create
+`$CONFIG_ROOT/repeated-ranked-softplus.yaml`:
 
 ```yaml
 batch_size: 20
@@ -487,16 +489,14 @@ GEN_ROOT="$RAW_ROOT/repeated-guided/gen_3"
 ./multiple_runs.sh --config "$CONFIG_ROOT/repeated-ranked-softplus.yaml"
 ```
 
-Use a new `gen_N` for every independent campaign; the campaign directory must
-match the YAML `base_dir`.
+Use a new `gen_N` for each independent campaign. Match the campaign directory to
+the YAML `base_dir`.
 
-On an out-of-memory failure, the script retries the same run with
+On out-of-memory, the script retries with
 `ceil(current_batch_size * oom_backoff_percent / 100)`. It stops after
-`oom_retries`, or when another reduction would cross `min_batch_size`. Therefore,
-record the `final_batch_size` column when comparing ensembles whose retries may
-have produced different numbers of structures.
+`oom_retries` or at `min_batch_size`; compare ensembles using `final_batch_size`.
 
-Results are nested under `gen_2/results` (or the selected `gen_N`) with paths
+Results are nested under `gen_2/results` (or the selected `gen_N`), with paths
 derived from the system, guidance parameters, and settings:
 
 ```text
@@ -519,11 +519,9 @@ do not process it as an additional batch.
 
 ### 2.3 Record provenance for each generation
 
-The generation examples above describe what to run. Save the selected
-installation and source state under each campaign's `gen_N` directory. For two
-batches from the same campaign, save one record in the campaign directory;
-`multiple_runs.sh` also gets one record for its campaign, with its `run_N`
-directories below it.
+Place one provenance record in each campaign's `gen_N` directory. A multi-batch
+campaign shares that record across its `batch_N` directories; a
+`multiple_runs.sh` campaign shares it across its `run_N` directories.
 
 Define this helper once:
 
@@ -562,7 +560,7 @@ record_generation_provenance() {
 ```
 
 After selecting the environment and branches, run the helper immediately before
-the first matching generation command in Section 2.2:
+the first matching command in Section 2.2:
 
 ```bash
 # Non-guided generation
@@ -602,15 +600,14 @@ record_generation_provenance \
 ```
 
 `installation_manifest.json` identifies the selected environment. The commit,
-status, patch, and untracked-file records identify the exact source checkouts
-used for that generation, including local tracked edits in an editable
-installation. Use another checkout and environment root for a generation that
-runs concurrently with a different branch.
+status, patch, and untracked-file records capture the source state used for the
+generation, including tracked edits in an editable checkout. Use another
+checkout and environment root for a concurrent generation on another branch.
 
 ### 2.4 Postprocess the selected generations
 
-Copy the scenario into this system's work tree and launch Jupyter from the
-analysis environment:
+Copy the scenario and notebook into this system's work tree, then launch
+Jupyter from the selected analysis environment:
 
 ```bash
 if [[ ! -f "$CONFIG_ROOT/scenario_no_relax.yaml" ]]; then
@@ -629,7 +626,7 @@ cd "$ANALYSIS_ROOT"
 ```
 
 Open `mg_generation_postprocessing_pipeline.ipynb`, run Sections 0 and 1, then
-run the cells below. Set `ANALYSIS_INSTALL_ROOT` to the selected installation.
+run the cells below. `ANALYSIS_INSTALL_ROOT` must match `INSTALL_ROOT`.
 
 #### 2.4.1 Run the scenario pipeline
 
@@ -649,16 +646,21 @@ PROCESSED_ROOT.mkdir(parents=True, exist_ok=True)
 FIGURE_ROOT.mkdir(parents=True, exist_ok=True)
 
 generation_dirs = [
-    RAW_ROOT / "non_guided" / "gen_1",
-    RAW_ROOT / "repeated-guided" / "gen_1" / "batch_1",
-    RAW_ROOT / "repeated-guided" / "gen_1" / "batch_2",
+    path
+    for path in (RAW_ROOT / "non_guided").glob("gen_*")
+    if path.is_dir()
 ]
-
 for campaign_root in sorted((RAW_ROOT / "repeated-guided").glob("gen_*")):
+    generation_dirs.extend(
+        path for path in campaign_root.glob("batch_*") if path.is_dir()
+    )
     generation_dirs.extend(
         path.parent
         for path in campaign_root.glob("results/**/run_*/input_parameters.txt")
     )
+generation_dirs = sorted(set(generation_dirs))
+if not generation_dirs:
+    raise RuntimeError(f"No generation directories found under {RAW_ROOT}")
 
 repos = []
 for generation_dir in generation_dirs:
@@ -676,17 +678,15 @@ system_repo = repos[0].parent
 print(*repos, sep="\n")
 ```
 
-The scenario performs structure parsing, minimum-distance filtering, then
-symmetrization, followed by GRACE energy estimation, OPTIMADE reference
-collection, structural deduplication, and reference merging. Filtering first
-keeps pathological short-distance structures away from the spglib symmetry
-search. Rerunning it resumes from saved stages; use a fresh processed-output
-directory after changing stage dependencies.
+The scenario parses structures, filters minimum distances, symmetrizes, estimates
+GRACE energies, collects OPTIMADE references, deduplicates, and merges
+references. The distance filter precedes spglib symmetrization. Reruns resume
+from saved stages; use a fresh processed directory after changing dependencies.
 
 #### 2.4.2 Build summary tables and Pareto-front files
 
-Ranked and grouped guidance require explicit reporting callables. Keep the loss
-dictionaries identical to those used for generation.
+Pass explicit reporting callables for ranked and grouped guidance. Use the same
+loss dictionaries as in generation.
 
 ```python
 from pymatgen.core import Element
@@ -746,20 +746,18 @@ summary_report = build_guidance_summary_for_processed_system(
 print(summary_report)
 ```
 
-Use `PARETO_STAGE = "deduplicate_all"` when the fronts should contain generated
-structures only. `add_ref_deduplicated` also includes reference structures.
+Use `PARETO_STAGE = "deduplicate_all"` for generated structures only;
+`add_ref_deduplicated` also includes reference structures.
 
 #### 2.4.3 Choose the histogram/KDE callable
 
-There are two callable regimes. Run one of the following cells, then run the
-common plotting cell below it.
+Choose one callable regime below, then run the common plotting cell.
 
 #### Regime A: reconstruct callables from guided batch metadata
 
 `callables_from_ds(parse_raw_dataset)` reads `batch_metadata["guidance"]` and
-recreates the descriptor callable, its target, and the matching loss callable.
-This is convenient for guided runs whose metadata uses a supported simple pair
-descriptor, such as `mean_coordination` with `Co-O`,
+recreates the descriptor, target, and matching loss. It supports guided runs
+with simple metadata, such as `mean_coordination` with `Co-O`,
 `target_coordination_share`, or `volume_pa`.
 
 ```python
@@ -795,15 +793,14 @@ descriptor_label = descriptor_name
 print("Guidance:", guidance_name, "Descriptor:", descriptor_name)
 ```
 
-For the ranked-softplus and grouped-key commands in this document, use the
-manual regime: the current metadata helper does not infer ranked-softplus
-descriptors or parse grouped keys such as `[Pd,Ni]-H`.
+Use the manual regime for the ranked-softplus and grouped-key examples here;
+the metadata helper cannot infer ranked-softplus descriptors or grouped keys
+such as `[Pd,Ni]-H`.
 
 #### Regime B: construct callables manually
 
-Manual construction is required for an unguided batch because its metadata has
-`guidance: None`. It is also useful for testing alternative descriptors,
-cutoffs, targets, and losses on the same structures.
+Use manual construction for an unguided batch (`guidance: None`) and for testing
+alternative descriptors, cutoffs, targets, or losses on the same structures.
 
 ```python
 from pymatgen.core import Element
@@ -823,13 +820,12 @@ descriptor_target = 6
 descriptor_label = "mean CN([Pd,Ni]-H)"
 ```
 
-Use the same `get_loss_fn(name, target=...)` pattern shown in Section 2.4.2 when
-you need to recompute a loss for Pareto analysis.
+Use the `get_loss_fn(name, target=...)` pattern from Section 2.4.2 to recompute a
+loss for Pareto analysis.
 
 #### 2.4.4 Plot a histogram or KDE
 
-Run this after either callable regime. Set `PLOT_KIND` to `"histogram"` or
-`"kde"`.
+Run this after either regime. Set `PLOT_KIND` to `"histogram"` or `"kde"`.
 
 ```python
 import matplotlib.pyplot as plt
@@ -884,9 +880,8 @@ plt.close(fig)
 
 #### 2.4.5 Plot the Pareto fronts
 
-`build_guidance_summary_for_processed_system` has already created the front
-CSVs, text tables, and front-specific POSCAR directories. This cell creates PDF
-figures for both losses.
+The summary step already creates front CSVs, tables, and POSCAR directories.
+This cell creates PDF figures for both losses.
 
 ```python
 import matplotlib.pyplot as plt
@@ -923,48 +918,11 @@ for repo_no, repo in enumerate(repos, start=1):
         plt.close(ax.figure)
 ```
 
-### 2.5 Expected directory layout
+### 2.5 Archive the system
 
-```text
-$PROJECT_ROOT/
-├── code/                              # installed software; CODE_ROOT
-│   ├── vsbtools/                      # VSBTools checkout
-│   ├── scout-matter/                  # MatterGen checkout
-│   ├── bootstrap-venv/                # optional installer environment
-│   └── workflow-env/                  # editable runtime environments
-└── work/                              # experiment data; WORK_ROOT
-    ├── Ni-Pd-H/                       # one system work tree
-    │   ├── raw-generations/
-    │   │   ├── non_guided/
-    │   │   │   ├── gen_1/
-    │   │   │   │   ├── generated_crystals.extxyz
-    │   │   │   │   ├── input_parameters.txt
-    │   │   │   │   └── provenance/       # installation manifest and source state
-    │   │   │   └── gen_2/
-    │   │   └── repeated-guided/
-    │   │       ├── gen_1/             # multi-batch campaign
-    │   │       │   ├── batch_1/
-    │   │       │   ├── batch_2/
-    │   │       │   └── provenance/       # installation manifest and source state
-    │   │       └── gen_2/             # multiple_runs.sh campaign
-    │   │           ├── results/.../run_N/
-    │   │           └── provenance/       # installation manifest and source state
-    │   ├── configs/
-    │   ├── logs/
-    │   └── analysis-run/
-    │       ├── processed/<system>/<generation-repository>/<stage>/
-    │       └── figures/
-    └── Mg-B-H/                        # another independent system
-        ├── raw-generations/
-        ├── configs/
-        ├── logs/
-        └── analysis-run/
-```
-
-Keep each generation directory together with its own `provenance/` directory.
-These per-generation records, the scenario YAML, and the processed outputs are
-the inputs needed to reproduce the analysis with a fresh `CODE_ROOT`
-installation.
+Keep each `gen_N` directory with its own `provenance/` directory. The system
+archive then contains its raw generations, configuration, logs, processed
+datasets, figures, and provenance records.
 
 Archive one system, including all its generations and provenance, with:
 
