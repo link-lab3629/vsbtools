@@ -532,9 +532,12 @@ system_repo = repos[0].parent
 print(*repos, sep="\n")
 ```
 
-The scenario performs structure parsing, symmetrization, minimum-distance
-filtering, GRACE energy estimation, OPTIMADE reference collection, structural
-deduplication, and reference merging. Rerunning it resumes from saved stages.
+The scenario performs structure parsing, minimum-distance filtering, then
+symmetrization, followed by GRACE energy estimation, OPTIMADE reference
+collection, structural deduplication, and reference merging. Filtering first
+keeps pathological short-distance structures away from the spglib symmetry
+search. Rerunning it resumes from saved stages; use a fresh processed-output
+directory after changing stage dependencies.
 
 ### 3.2 Build summary tables and Pareto-front files
 

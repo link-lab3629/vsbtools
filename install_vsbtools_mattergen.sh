@@ -158,7 +158,7 @@ checkout_source_ref() {
     local label="$3"
     local branch_name
 
-    [[ -n "$ref" ]] || return
+    [[ -n "$ref" ]] || return 0
     git -C "$source" rev-parse --git-dir >/dev/null 2>&1 \
         || fail "$label source is not a Git checkout: $source"
     if [[ -n "$(git -C "$source" status --porcelain --untracked-files=normal)" ]]; then
@@ -197,7 +197,9 @@ make_venv() {
         log "Creating $venv"
         "$PYTHON_BIN" -m venv "$venv"
     fi
-    "$venv/bin/python" -m pip install --upgrade pip setuptools wheel
+    # MatterGen's pinned PyTorch Lightning still imports pkg_resources,
+    # which was removed from newer setuptools releases.
+    "$venv/bin/python" -m pip install --upgrade pip "setuptools<81" wheel
 }
 
 pip_with_pytorch_index() {

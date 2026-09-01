@@ -60,6 +60,28 @@ def _refresh_function_collections() -> None:
     }
 
 
+def _import_soft_neighbor_counts():
+    """Load the private coordination helper across MatterGen source layouts.
+
+    Older MatterGen revisions re-exported this helper from ``diffusion_loss``;
+    the current scout-matter checkout keeps the implementation in
+    ``coordination_loss``.  The bridge only needs the function for the
+    descriptor collection, so accept both layouts.
+    """
+    try:
+        from mattergen.diffusion.diffusion_loss import (
+            _soft_neighbor_counts_per_A_single as implementation,
+        )
+    except ImportError as diffusion_loss_error:
+        try:
+            from mattergen.diffusion.coordination_loss import (
+                _soft_neighbor_counts_per_A_single as implementation,
+            )
+        except ImportError:
+            raise diffusion_loss_error
+    return implementation
+
+
 def _configure_mattergen_path(*, prompt: bool) -> Path | None:
     global mgen_path
     if mgen_path is not None:
@@ -92,8 +114,13 @@ def _configure_mattergen_path(*, prompt: bool) -> Path | None:
 def _import_diffusion_loss_with_chemgraph_compat(*, restore_modules: bool = False):
     chemgraph_module_name = "mattergen.common.data.chemgraph"
     diffusion_loss_module_name = "mattergen.diffusion.diffusion_loss"
+    coordination_loss_module_name = "mattergen.diffusion.coordination_loss"
     previous_chemgraph_module = sys.modules.get(chemgraph_module_name)
     previous_diffusion_loss_module = sys.modules.pop(diffusion_loss_module_name, None)
+    # coordination_loss binds ChemGraph at import time.  Reload it under the
+    # compatibility ChemGraph as well, otherwise its isinstance checks keep
+    # referring to the real MatterGen class cached by an earlier import.
+    previous_coordination_loss_module = sys.modules.pop(coordination_loss_module_name, None)
 
     compat_module = types.ModuleType(chemgraph_module_name)
     compat_module.ChemGraph = _ChemGraphCompat
@@ -102,12 +129,12 @@ def _import_diffusion_loss_with_chemgraph_compat(*, restore_modules: bool = Fals
     try:
         from mattergen.diffusion.diffusion_loss import (
             LOSS_REGISTRY as _LOSS_REGISTRY,
-            _soft_neighbor_counts_per_A_single as _soft_neighbor_counts_per_A_single_impl,
             clear_globals as _clear_globals_impl_imported,
             compute_mean_coordination as _compute_mean_coordination,
             volume as _volume,
             volume_pa as _volume_pa,
         )
+        _soft_neighbor_counts_per_A_single_impl = _import_soft_neighbor_counts()
         try:
             from mattergen.diffusion.diffusion_loss import (
                 compute_target_coordination_share as _compute_target_coordination_share,
@@ -125,6 +152,10 @@ def _import_diffusion_loss_with_chemgraph_compat(*, restore_modules: bool = Fals
             sys.modules.pop(diffusion_loss_module_name, None)
         else:
             sys.modules[diffusion_loss_module_name] = previous_diffusion_loss_module
+        if previous_coordination_loss_module is None:
+            sys.modules.pop(coordination_loss_module_name, None)
+        else:
+            sys.modules[coordination_loss_module_name] = previous_coordination_loss_module
         raise
 
     if restore_modules:
@@ -136,6 +167,10 @@ def _import_diffusion_loss_with_chemgraph_compat(*, restore_modules: bool = Fals
             sys.modules.pop(diffusion_loss_module_name, None)
         else:
             sys.modules[diffusion_loss_module_name] = previous_diffusion_loss_module
+        if previous_coordination_loss_module is None:
+            sys.modules.pop(coordination_loss_module_name, None)
+        else:
+            sys.modules[coordination_loss_module_name] = previous_coordination_loss_module
 
     return (
         _ChemGraphCompat,
@@ -158,12 +193,12 @@ def _import_mattergen() -> None:
         from mattergen.common.data.chemgraph import ChemGraph as _ChemGraph
         from mattergen.diffusion.diffusion_loss import (
             LOSS_REGISTRY as _LOSS_REGISTRY,
-            _soft_neighbor_counts_per_A_single as _soft_neighbor_counts_per_A_single_impl,
             clear_globals as _clear_globals_impl_imported,
             compute_mean_coordination as _compute_mean_coordination,
             volume as _volume,
             volume_pa as _volume_pa,
         )
+        _soft_neighbor_counts_per_A_single_impl = _import_soft_neighbor_counts()
         try:
             from mattergen.diffusion.diffusion_loss import (
                 compute_target_coordination_share as _compute_target_coordination_share,

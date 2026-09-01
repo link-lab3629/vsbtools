@@ -27,18 +27,19 @@ stages:
     # elements are taken from ctx.globals["elements"],
     # which you set from batch metadata in Python
 
-  symmetrize_raw:
-    op: symmetrize
+  check_min_dist:
+    op: discard_close_atoms
     needs: [ parse_raw ]
     params: { }
 
-  check_min_dist:
-    op: discard_close_atoms
-    needs: [ symmetrize_raw ]
+  symmetrize_raw:
+    op: symmetrize
+    needs: [ check_min_dist ]
+    params: { }
 
   estimate_all:
     op: estimate
-    needs: [ check_min_dist ]
+    needs: [ symmetrize_raw ]
     params: { }
 
   poll_db:
