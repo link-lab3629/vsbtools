@@ -225,15 +225,16 @@ environment.
 See the [end-to-end MatterGen guide](vsbtools/materials_dataset/Doc/MatterGen_End_to_End.md)
 for generation, postprocessing, Pareto fronts, and distribution plots.
 
-Before each generation, preserve the selected installation and source state
-under that generation's output directory, for example
-`WORK_ROOT/raw-generations/Ni-Pd-H/unguided/provenance/`. The installer writes
-`installation_manifest.json` with the selected branches, commits, and
+Organize work under one system directory, such as
+`WORK_ROOT/Ni-Pd-H/`. Before the first command of each `gen_N`, preserve the
+selected installation and source state under that generation's output
+directory, for example
+`WORK_ROOT/Ni-Pd-H/raw-generations/non_guided/gen_1/provenance/`. The installer
+writes `installation_manifest.json` with the selected branches, commits, and
 dirty-state flags. The end-to-end guide contains a helper that copies this
 manifest and `workflow_env.sh`, then records the two commit hashes, Git status
-files, and patches for uncommitted tracked changes. A final archive of
-`WORK_ROOT` then contains the independent provenance record for every
-generation.
+files, and patches for uncommitted tracked changes. Archive the system work
+tree to keep every generation's provenance with its results.
 
 A packaged reproducibility pipeline is provided for the MatterGen guidance
 analysis workflow. It starts from the raw-generation archives in
