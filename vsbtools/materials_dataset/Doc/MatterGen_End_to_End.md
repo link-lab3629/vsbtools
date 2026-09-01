@@ -450,9 +450,10 @@ controls are:
 `group_coordination` and `mean_coordination` are distinct registered
 guidance types. This example uses `group_coordination` because one target is
 defined for the pooled central-species group `[Pd,Ni]`. The same `gen_2`
-setting can be supplied through YAML. Choose this YAML command or the CLI
-command above; use a new `gen_N` if the guidance type, its parameters,
-or another meaningful setting changes.
+setting can instead be stored in a YAML configuration file. Use either the
+direct CLI invocation above or the config-file invocation below. Use a new
+`gen_N` if the guidance type, its parameters, or another meaningful
+setting changes.
 
 ```yaml
 batch_size: 20
@@ -496,8 +497,8 @@ command-line option:
 ```
 
 Match the homogeneous generation directory to the YAML `base_dir`. If the
-preceding CLI command was used, do not run this YAML command as a second
-setting; it is an alternative way to repeat the same `gen_2` setting.
+preceding direct CLI invocation was used, do not also launch the config-file
+invocation: both forms describe the same `gen_2` setting.
 
 On out-of-memory, the script retries with
 `ceil(current_batch_size * oom_backoff_percent / 100)`. It stops after
@@ -586,8 +587,8 @@ record_generation_provenance \
   "$VSBTOOLS_SOURCE" \
   "$MATTERGEN_SOURCE"
 
-# The mean-coordination setting in repeated-guided/gen_2
-# (use once before the selected CLI or YAML command)
+# The group-coordination setting in repeated-guided/gen_2
+# (use once before whichever invocation form you selected)
 GEN_ROOT="$RAW_ROOT/repeated-guided/gen_2"
 record_generation_provenance \
   "$GEN_ROOT" \
