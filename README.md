@@ -179,6 +179,49 @@ independent regular snapshot are two different workflows. The `--regular`
 name means the ordinary non-editable `pip install` mode; it does not mean that
 every branch change requires a second installation.
 
+### Switching between installed environments
+
+The two installation modes are selected by their environment roots. For
+example, keep the editable installation in `workflow-env` and the regular
+snapshot in `workflow-env-branch-b`. To switch, start a fresh shell (or first
+deactivate the current virtual environment), then source the environment file
+for the installation you want.
+
+For the editable installation:
+
+```bash
+source "$CODE_ROOT/workflow-env/workflow_env.sh"
+source "$CODE_ROOT/workflow-env/venvs/scout-matter/bin/activate"
+```
+
+For the regular snapshot:
+
+```bash
+source "$CODE_ROOT/workflow-env-branch-b/workflow_env.sh"
+source "$CODE_ROOT/workflow-env-branch-b/venvs/scout-matter/bin/activate"
+```
+
+Use only one block in a shell. The generated
+`workflow_env.sh` selects the matching `VSBTOOLS_PYTHON`, `MATTERGEN_PYTHON`,
+and `GRACE_PYTHON`; it does not reinstall anything. The corresponding
+`launch_jupyter.sh` also starts Jupyter with the selected VSBTools environment.
+For the editable installation:
+
+```bash
+"$CODE_ROOT/workflow-env/launch_jupyter.sh"
+```
+
+For the regular snapshot:
+
+```bash
+"$CODE_ROOT/workflow-env-branch-b/launch_jupyter.sh"
+```
+
+Choose the command from the environment root whose code and dependencies you
+want to use. If only one installation exists, run the installer once to create
+the other one; switching thereafter only means selecting the desired
+environment.
+
 See the [end-to-end MatterGen guide](vsbtools/materials_dataset/Doc/MatterGen_End_to_End.md)
 for generation, postprocessing, Pareto fronts, and distribution plots.
 

@@ -210,6 +210,29 @@ notebook itself, use the separate
 creates contained source copies, runtime state, and notebook outputs for its
 specific reproducibility task.
 
+To switch between an editable installation in `workflow-env` and a regular
+installation in `workflow-env-regular`, select the corresponding environment
+root in a fresh shell (or deactivate the current virtual environment):
+
+For the editable installation:
+
+```bash
+source "$CODE_ROOT/workflow-env/workflow_env.sh"
+source "$CODE_ROOT/workflow-env/venvs/scout-matter/bin/activate"
+```
+
+For the regular installation:
+
+```bash
+source "$CODE_ROOT/workflow-env-regular/workflow_env.sh"
+source "$CODE_ROOT/workflow-env-regular/venvs/scout-matter/bin/activate"
+```
+
+Use one block per shell. The generated `workflow_env.sh` selects the Python
+paths for VSBTools, MatterGen, and GRACE; it does not perform an installation.
+For an unambiguous launch, use the matching environment's
+`launch_jupyter.sh` or absolute interpreter paths.
+
 ### 1.2 Install and verify GRACE/tensorpotential
 
 GRACE is provided through the `tensorpotential` package. The reusable installer
