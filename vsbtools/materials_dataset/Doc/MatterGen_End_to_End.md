@@ -183,8 +183,9 @@ The first path should be under `$CODE_ROOT/vsbtools`; the second should be under
 
 Editable installations are mutable. Uncommitted edits and later branch changes
 alter subsequent runs, and a commit hash alone cannot reproduce uncommitted
-content. Before archiving an experiment, commit the relevant changes or save a
-patch together with `WORK_ROOT`.
+content. Before conducting an experiment, record the relevant commit hashes and
+save any uncommitted changes as a patch. Archive these provenance records
+together with `WORK_ROOT`.
 
 For a stable installed snapshot, first check out the desired clean commits and
 use `--regular` with a separate environment root:
