@@ -32,7 +32,14 @@ from .mattergen_tools.parsers import input_parameters_to_dict
 LOG = logging.getLogger(__name__)
 
 SINGLE_STRUCTURE_PATTERNS = ('*.cif', '*POSCAR', '*POSCAR*')
-ALLOWED_BATCH_METADATA_DIFF_KEYS = {"output_path", "batch_size", "gpu_memory_gb", "print_loss"}
+ALLOWED_BATCH_METADATA_DIFF_KEYS = {
+    "output_path",
+    "batch_size",
+    "num_batches",
+    "gpu_memory_gb",
+    "force_gpu",
+    "print_loss",
+}
 
 BATCH_READER_REGISTRY: dict[str, Callable[["StructureDatasetIO", Path], CrystalDataset]] = {
     '*POSCARS': lambda io, file: io.load_from_multiimage_poscar(file),

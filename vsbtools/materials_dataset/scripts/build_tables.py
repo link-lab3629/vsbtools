@@ -214,7 +214,7 @@ def build_guidance_summary_for_processed_system(
     """Build comparable summary artifacts for all generation repos in one system.
 
     Guided repos are summarized first. Their inferred callables are merged and
-    then reused for the non-guided repo, which keeps the summary columns and
+    then reused for every non-guided repo, which keeps the summary columns and
     Pareto-front exports aligned across the system.
     """
     processed_system_repo = Path(processed_system_repo)
@@ -222,14 +222,14 @@ def build_guidance_summary_for_processed_system(
         raise NotADirectoryError(processed_system_repo)
 
     system_callables: Dict[str, Callable] = dict(callables or {})
-    non_guided_repo: Path | None = None
+    non_guided_repos: list[Path] = []
     generation_reports: list[dict[str, Any]] = []
 
     for generation_repo in sorted(processed_system_repo.iterdir()):
         if not generation_repo.is_dir():
             continue
         if non_guided_marker in generation_repo.as_posix():
-            non_guided_repo = generation_repo
+            non_guided_repos.append(generation_repo)
             continue
 
         repo_callables = build_guidance_summary_for_repo(
@@ -246,7 +246,7 @@ def build_guidance_summary_for_processed_system(
             collect_guidance_summary_artifacts(generation_repo, target_stages=target_stages)
         )
 
-    if non_guided_repo is None:
+    if not non_guided_repos:
         LOG.warning(
             "Non-guided generation repo not found for processed system %s",
             processed_system_repo,
@@ -259,25 +259,26 @@ def build_guidance_summary_for_processed_system(
             )
         return system_callables
 
-    final_callables = build_guidance_summary_for_repo(
-        non_guided_repo,
-        raw_stage=raw_stage,
-        target_stages=target_stages,
-        ref_stages=ref_stages,
-        auto_ref_stages=auto_ref_stages,
-        callables=system_callables,
-        max_pareto_front=max_pareto_front,
-    )
-    generation_reports.append(
-        collect_guidance_summary_artifacts(non_guided_repo, target_stages=target_stages)
-    )
+    for non_guided_repo in non_guided_repos:
+        system_callables = build_guidance_summary_for_repo(
+            non_guided_repo,
+            raw_stage=raw_stage,
+            target_stages=target_stages,
+            ref_stages=ref_stages,
+            auto_ref_stages=auto_ref_stages,
+            callables=system_callables,
+            max_pareto_front=max_pareto_front,
+        )
+        generation_reports.append(
+            collect_guidance_summary_artifacts(non_guided_repo, target_stages=target_stages)
+        )
     if return_report:
         return GuidanceSummaryBuildReport(
-            final_callables,
+            system_callables,
             processed_system_repo=processed_system_repo,
             generation_reports=generation_reports,
         )
-    return final_callables
+    return system_callables
 
 
 if __name__ == "__main__":

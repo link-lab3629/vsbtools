@@ -1,0 +1,63 @@
+MATTERGEN QUICK INSTRUCTIONS
+
+# Append these paths once (edit as needed), then reload the shell.
+  printf '%s\n' \
+    'export MATTERGEN_CODE_ROOT="$HOME/mattergen-project/code"' \
+    'export MATTERGEN_WORK_ROOT="$HOME/mattergen-project/work"' \
+    'export VSBTOOLS_WORKFLOW_ENV="$MATTERGEN_CODE_ROOT/workflow-env"' >> ~/.bashrc
+  source ~/.bashrc
+
+1. Install (once; Python >=3.11)
+  mkdir -p "$MATTERGEN_CODE_ROOT"
+  git clone https://github.com/link-lab3629/vsbtools.git "$MATTERGEN_CODE_ROOT/vsbtools"
+  git clone https://github.com/link-lab3629/scout-matter.git "$MATTERGEN_CODE_ROOT/scout-matter"
+  bash "$MATTERGEN_CODE_ROOT/vsbtools/install_vsbtools_mattergen.sh" \
+    --vsbtools-source "$MATTERGEN_CODE_ROOT/vsbtools" \
+    --mattergen-source "$MATTERGEN_CODE_ROOT/scout-matter" \
+    --env-root "$MATTERGEN_CODE_ROOT/workflow-env" --python python3 --editable
+
+2. Work directory (once)
+  mkdir -p "$MATTERGEN_WORK_ROOT"
+
+3. First calculation for a new system: Pd-Ni-H, unguided, one run
+  "$MATTERGEN_CODE_ROOT/vsbtools/generate_mattergen.sh" \
+    "$MATTERGEN_WORK_ROOT/Pd-Ni-H" --runs 1 --batch-size 20 --num-batches 1 --gpu 0
+
+  Creates:
+    $MATTERGEN_WORK_ROOT/Pd-Ni-H/raw-generations/non_guided/gen_1/run_1/
+
+4. New calculation for Pd-Ni-H: ranked-softplus guidance, ten runs
+  "$MATTERGEN_CODE_ROOT/vsbtools/generate_mattergen.sh" \
+    "$MATTERGEN_WORK_ROOT/Pd-Ni-H" \
+    --runs 10 \
+    --batch-size 20 \
+    --num-batches 1 \
+    --gpu 0 \
+    --pretrained-name chemical_system \
+    --diffusion-guidance-factor 2.0 \
+    --guidance "{'ranked_coordination': {'margin':0.05, 'temperature':0.10, 'alpha':2.0, 'cn_tolerance':0.4, 'cn_temperature':0.05, 'satisfaction_weight':1.0, '[Pd,Ni]-H':6}}" \
+    --diffusion-loss-weight "[0.01,0.01,True]" \
+    --self-rec-steps 3 \
+    --back-step 2 \
+    --algo 1
+
+  For the first guided calculation, this creates:
+    $MATTERGEN_WORK_ROOT/Pd-Ni-H/raw-generations/repeated-guided/gen_1/run_1/
+    ...
+    $MATTERGEN_WORK_ROOT/Pd-Ni-H/raw-generations/repeated-guided/gen_1/run_10/
+
+  If guided gen_1 already exists, the command creates gen_2. If gen_2 also
+  exists, it creates gen_3, and so on.
+
+  To append runs to an existing gen_2, add "--generation gen_2" and supply
+  exactly the same generation parameters. New folders continue from the last
+  run number, for example run_11, run_12, etc.
+
+  All parameters are saved in each run_N/input_parameters.txt.
+  Full option list: generate_mattergen.sh --help.
+
+5. Postprocess
+  "$MATTERGEN_CODE_ROOT/vsbtools/launch_mattergen_analysis.sh" "$MATTERGEN_WORK_ROOT/Pd-Ni-H"
+  # Run the cells in analysis-run/mattergen_analysis.ipynb.
+
+Output: raw-generations/{non_guided|repeated-guided}/gen_N/run_N/

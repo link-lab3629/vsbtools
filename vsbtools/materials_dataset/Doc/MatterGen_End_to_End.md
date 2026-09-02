@@ -8,6 +8,42 @@ This guide has two parts:
 The examples use `Ni-Pd-H` and target `CN([Pd,Ni]-H) = 6`. Replace the system,
 species, target, GPU, and guidance settings as needed.
 
+## Quick start: three reusable files
+
+Once the installation under `CODE_ROOT` is available, the reusable workflow
+uses one generation script, one notebook, and one launcher. Choose a system
+directory, generate the desired settings, launch the copied notebook, and run
+its cells:
+
+```bash
+SYSTEM_ROOT="$PWD/mattergen-project/work/Ni-Pd-H"
+
+# Unguided setting; the chemical system defaults to the directory name.
+./generate_mattergen.sh "$SYSTEM_ROOT" --runs 1 --batch-size 20
+
+# Guided setting; a new gen_N is selected automatically.
+./generate_mattergen.sh "$SYSTEM_ROOT" --runs 10 \
+  --guidance "{'group_coordination': {'mode':'huber', 'alpha':3.0, '[Pd,Ni]-H':6}}"
+
+# Copies mattergen_analysis.ipynb to SYSTEM_ROOT/analysis-run/ and opens Jupyter.
+./launch_mattergen_analysis.sh "$SYSTEM_ROOT"
+```
+
+The root-level files are:
+
+- `generate_mattergen.sh` — unified guided/unguided generation with `gen_N/run_N`
+  organization.
+- `mattergen_analysis.ipynb` — editable YAML scenario plus all processing,
+  summary, histogram/KDE, Pareto, and manifest cells.
+- `launch_mattergen_analysis.sh` — environment-aware notebook launcher that
+  preserves system-local edits.
+
+The scripts locate `workflow_env.sh` through `--env-root`,
+`VSBTOOLS_WORKFLOW_ENV`, the system marker `.vsbtools-env-root`, or the default
+repository layout. Supply `--env-root PATH` on the first command when the
+managed environments live elsewhere; subsequent commands remember it. Use
+`--refresh` on the launcher to copy a fresh template into `analysis-run/`.
+
 ## 1. Install the code
 
 ### 1.1 Prepare Linux or macOS
@@ -293,17 +329,11 @@ number of batches or runs, GPU and memory allocation, output paths, and OOM
 retry settings may vary. Create a new `gen_N` whenever a meaningful setting
 changes, especially the guidance objective or target.
 
-There are two ways to repeat one setting:
-
-| Output               | How it is produced                               | Meaning                                                                |
-| -------------------- | ------------------------------------------------ | ---------------------------------------------------------------------- |
-| `batch_N/`           | Separate direct `mattergen-generate` invocations | One manually named repeat; keep the invocation settings identical.     |
-| `results/.../run_N/` | `multiple_runs.sh --runs N`                      | One independent MatterGen invocation per run, with OOM retry handling. |
-
-The direct MatterGen option `--num_batches` controls batches inside one
-invocation and does not create a new generation setting. `batch_N` and `run_N`
-are both repeat directories; they may coexist under one `gen_N` only when their
-meaningful settings match.
+Every invocation uses the same repeat convention: `gen_N/run_N`. A single run
+is `run_1`; `--runs N` creates `run_1` through `run_N`. The direct MatterGen
+option `--num_batches` controls batches inside one `run_N` invocation. The new
+workflow never creates `batch_N`; existing `batch_N` trees remain readable as
+legacy input.
 
 ```text
 work/
@@ -311,19 +341,15 @@ work/
 │   ├── raw-generations/
 │   │   ├── non_guided/
 │   │   │   ├── gen_1/              # one non-guided setting
-│   │   │   │   ├── generated_crystals.extxyz
-│   │   │   │   ├── input_parameters.txt
-│   │   │   │   └── provenance/       # installation manifest and source state
-│   │   │   └── gen_2/              # another non-guided setting; contains provenance/
+│   │   │   │   └── run_1/          # one invocation
+│   │   │   └── gen_2/              # another non-guided setting
 │   │   └── repeated-guided/
 │   │       ├── gen_1/              # ranked-softplus setting
-│   │       │   ├── batch_1/
-│   │       │   ├── batch_2/
-│   │       │   └── provenance/       # installation manifest and source state
+│   │       │   ├── run_1/           # structures, parameters, and provenance/
+│   │       │   └── run_2/           # structures, parameters, and provenance/
 │   │       └── gen_2/              # mean-coordination setting
-│   │           ├── results/.../run_1/
-│   │           ├── results/.../run_2/
-│   │           └── provenance/       # installation manifest and source state
+│   │           ├── run_1/           # structures, parameters, and provenance/
+│   │           └── run_2/           # structures, parameters, and provenance/
 │   ├── configs/
 │   ├── logs/
 │   └── analysis-run/
@@ -331,10 +357,14 @@ work/
     ├── raw-generations/
     │   ├── non_guided/
     │   │   ├── gen_1/              # one non-guided setting
+    │   │   │   └── run_1/          # one invocation
     │   │   └── gen_2/              # another non-guided setting
+    │   │       └── run_1/          # one invocation
     │   └── repeated-guided/
     │       ├── gen_1/              # one homogeneous guided setting
+    │       │   └── run_1/          # one invocation
     │       └── gen_2/              # another homogeneous guided setting
+    │           └── run_1/          # one invocation
     ├── configs/
     ├── logs/
     └── analysis-run/
@@ -342,192 +372,59 @@ work/
 
 ### 2.2 Generate raw structures
 
-Choose one or more generation patterns below. For each `gen_N`, run the
-provenance step in Section 2.3 before its first generation command.
+Choose the system directory, then use the repository-level generator. Section
+2.3 describes the provenance record created automatically by each invocation.
 
 #### 2.2.1 Non-guided generation
 
 ```bash
-GEN_ROOT="$RAW_ROOT/non_guided/gen_1"
-mattergen-generate "$GEN_ROOT" \
-  --pretrained-name=chemical_system \
-  --batch_size=20 \
-  --num_batches=1 \
-  --properties_to_condition_on="{'chemical_system':'Ni-Pd-H'}" \
-  --diffusion_guidance_factor=2.0 \
-  --record_trajectories=False \
-  --print_loss=False \
-  --force_gpu=0
+./generate_mattergen.sh "$SYSTEM_ROOT" --runs 1 --batch-size 20
 ```
 
-#### 2.2.2 Repeated direct outputs with ranked-softplus guidance
+This creates `raw-generations/non_guided/gen_1/run_1/`. The chemical system
+defaults to the final component of `SYSTEM_ROOT`; pass `--chemical-system` when
+the directory name and MatterGen condition differ.
 
-These two direct outputs share the same ranked-softplus settings and therefore
-belong to one homogeneous generation group, `repeated-guided/gen_1`. Use a new `gen_N`
-for a different guidance objective, target, or other meaningful setting.
+#### 2.2.2 Guided generation
+
+Guidance is optional. Supplying it selects `repeated-guided`; every invocation
+still uses `run_N` below one homogeneous `gen_N`.
 
 ```bash
-GEN_ROOT="$RAW_ROOT/repeated-guided/gen_1"
+./generate_mattergen.sh "$SYSTEM_ROOT" --runs 2 --batch-size 20 \
+  --guidance "{'ranked_coordination': {'margin':0.05, 'temperature':0.10, 'alpha':2.0, 'cn_tolerance':0.4, 'cn_temperature':0.05, 'satisfaction_weight':1.0, '[Pd,Ni]-H':6}}" \
+  --self-rec-steps 3 --back-step 2 --algo 1
 ```
 
-`ranked_coordination` applies the ranked-neighbor softplus objective. The
-grouped center `[Pd,Ni]` is one coordination constraint. The loop changes only
-the output directory, creating `batch_1` and `batch_2` with the same settings.
+This creates `raw-generations/repeated-guided/gen_1/run_1/` and `run_2/` with
+the same scientific settings. Use a new `gen_N` whenever the guidance type,
+target, checkpoint, or another meaningful setting changes. Reduce
+`--batch-size` when GPU memory is insufficient.
 
-```bash
-for BATCH in 1 2; do
-  mattergen-generate "$GEN_ROOT/batch_$BATCH" \
-    --pretrained-name=chemical_system \
-    --batch_size=20 \
-    --num_batches=1 \
-    --properties_to_condition_on="{'chemical_system':'Ni-Pd-H'}" \
-    --diffusion_guidance_factor=2.0 \
-    --guidance="{'ranked_coordination': {'margin':0.05, 'temperature':0.10, 'alpha':2.0, 'cn_tolerance':0.4, 'cn_temperature':0.05, 'satisfaction_weight':1.0, '[Pd,Ni]-H':6}}" \
-    --diffusion_loss_weight="[0.01,0.01,True]" \
-    --self_rec_steps=3 \
-    --back_step=2 \
-    --algo=1 \
-    --record_trajectories=False \
-    --print_loss=False \
-    --force_gpu=0
-done
-```
+#### 2.2.3 Repeat controls
 
-Every direct output must retain `generated_crystals.extxyz` and
-`input_parameters.txt`. Treat these weights as starting values and calibrate
-the objectives independently. Reduce `--batch_size` if GPU memory is
-insufficient.
+The repeat interface mirrors a `multiple_runs.sh` routine while allowing the
+guidance option to be omitted. The key controls are:
 
-#### 2.2.3 Repeat one setting with `multiple_runs.sh`
-
-Use scout-matter's root-level `multiple_runs.sh` for independent repeats of one
-guided setting. It invokes `mattergen-generate` per run, retries CUDA
-out-of-memory failures with a smaller batch, and records durations. Each run
-keeps its own output under `run_N/`.
-
-Activate the selected MatterGen environment and enter the source repository;
-`multiple_runs.sh` is at its root:
-
-```bash
-source "$INSTALL_ROOT/venvs/scout-matter/bin/activate"
-cd "$CODE_ROOT/scout-matter"
-
-./multiple_runs.sh --help
-```
-
-This is a separate setting from the ranked-softplus generation group above, so
-it uses `repeated-guided/gen_2`. All fifty runs share the same
-group-coordination guidance settings; `run_N` only identifies the
-independent repeat.
-
-```bash
-GEN_ROOT="$RAW_ROOT/repeated-guided/gen_2"
-./multiple_runs.sh \
-  --batch-size 20 \
-  --num-batches 1 \
-  --runs 50 \
-  --system Ni-Pd-H \
-  --guidance "{'group_coordination': {'mode':'huber', 'alpha':3.0, '[Pd,Ni]-H':6}}" \
-  --forward-weight 0.01 \
-  --backward-weight 0.01 \
-  --normalize true \
-  --self-rec-steps 3 \
-  --back-step 2 \
-  --algorithm 1 \
-  --diffusion-guidance-factor 2.0 \
-  --gpu 0 \
-  --base-dir "$GEN_ROOT" \
-  --log-file "$LOG_ROOT/group-coordination.log"
-```
-
-Add `--dry-run` to inspect the generated commands before starting. The size
-controls are:
-
-- `--batch-size`: structures generated in each batch.
-- `--num-batches`: batches generated within each independent run.
-- `--runs`: number of independent runs.
+- `--runs`: number of independent `run_N` directories; the default `1` creates
+  exactly `run_1`.
+- `--batch-size`: structures generated in each invocation.
+- `--num-batches`: batches generated inside each invocation.
+- `--dry-run`: print all resolved `run_N` commands without executing them.
 
 `group_coordination` and `mean_coordination` are distinct registered
-guidance types. This example uses `group_coordination` because one target is
-defined for the pooled central-species group `[Pd,Ni]`. The same `gen_2`
-setting can instead be stored in a YAML configuration file. Use either the
-direct CLI invocation above or the config-file invocation below. Use a new
-`gen_N` if the guidance type, its parameters, or another meaningful
-setting changes.
+guidance types. The generator accepts either mapping through `--guidance`; omit
+that option for an unguided run.
 
-```yaml
-batch_size: 20
-num_batches: 1
-runs: 50
-system: Ni-Pd-H
-
-guidance:
-  type: group_coordination
-  parameters:
-    mode: huber
-    alpha: 3.0
-    "[Pd,Ni]-H": 6
-  settings:
-    forward_weight: 0.01
-    backward_weight: 0.01
-    normalize: true
-    self_rec_steps: 3
-    back_step: 2
-    algorithm: 1
-
-diffusion_guidance_factor: 2.0
-gpu: 0
-
-oom_retries: 30
-oom_backoff_percent: 80
-min_batch_size: 1
-oom_wait_seconds: 10
-
-# These paths lead from code/scout-matter into the Ni-Pd-H work tree.
-base_dir: ../../work/Ni-Pd-H/raw-generations/repeated-guided/gen_2
-log_file: ../../work/Ni-Pd-H/logs/group-coordination-yaml.log
-dry_run: false
-```
-
-Save the YAML as `$CONFIG_ROOT/group-coordination.yaml`, then run it as the only
-command-line option:
-
-```bash
-./multiple_runs.sh --config "$CONFIG_ROOT/group-coordination.yaml"
-```
-
-Match the homogeneous generation directory to the YAML `base_dir`. If the
-preceding direct CLI invocation was used, do not also launch the config-file
-invocation: both forms describe the same `gen_2` setting.
-
-On out-of-memory, the script retries with
-`ceil(current_batch_size * oom_backoff_percent / 100)`. It stops after
-`oom_retries` or at `min_batch_size`; compare ensembles using `final_batch_size`.
-
-Results are nested under `gen_2/results` (or the selected `gen_N`), with paths
-derived from the system, guidance parameters, and settings:
-
-```text
-$RAW_ROOT/repeated-guided/gen_2/results/Ni-Pd-H/<guidance>/<parameters>/<settings>/
-├── durations.csv                # duration, final batch size, and attempts
-├── run_1/
-│   ├── generated_crystals.extxyz
-│   ├── input_parameters.txt
-│   └── attempt_1.log
-├── run_2/
-│   └── ...
-└── run_50/
-    └── ...
-```
-
-For a `multiple_runs.sh` generation, process each `run_N/` directory once. The
-script does not create a parent `generated_crystals.extxyz`, so every generated
-structure appears only in its corresponding run output.
+The generator follows the same independent-run model as `multiple_runs.sh`,
+with guidance optional and output paths normalized to `gen_N/run_N`. Existing
+outputs produced by older MatterGen or `multiple_runs.sh` layouts can still be
+processed recursively.
 
 ### 2.3 Automatic MatterGen provenance
 
-No separate provenance command is required. Every `mattergen-generate`
-invocation writes its record automatically into the same output directory:
+Every `mattergen-generate` invocation writes its provenance record into the
+same output directory:
 
 ```text
 <generation-output>/
@@ -545,47 +442,33 @@ runtime, platform, active environment, and installed package versions. For a
 regular installation outside a Git checkout, it records a SHA-256 digest of the
 installed MatterGen package tree.
 
-With `multiple_runs.sh`, every `run_N/` receives its own provenance record. This
-also captures the actual batch size used after any out-of-memory retry. Keep the
-`provenance/` directory beside the generated structures when moving or
-archiving a generation.
+Every `run_N/` receives its own provenance record. This also captures the actual
+batch size used after any out-of-memory retry when the external
+`multiple_runs.sh` routine is used. Keep the `provenance/` directory beside the
+generated structures when moving or archiving a generation.
 
 ### 2.4 Postprocess the selected generations
 
-Copy the scenario and notebook into this system's work tree, then launch
-Jupyter from the selected analysis environment:
+From the VSBTools repository root, launch the reusable notebook for this
+system:
 
 ```bash
-if [[ ! -f "$CONFIG_ROOT/scenario_no_relax.yaml" ]]; then
-  cp "$CODE_ROOT/vsbtools/vsbtools/materials_dataset/Examples/scenario_no_relax.yaml" \
-    "$CONFIG_ROOT/scenario_no_relax.yaml"
-fi
-
-ANALYSIS_INSTALL_ROOT="$INSTALL_ROOT"
-mkdir -p "$ANALYSIS_ROOT"
-if [[ ! -f "$ANALYSIS_ROOT/mg_generation_postprocessing_pipeline.ipynb" ]]; then
-  cp "$CODE_ROOT/vsbtools/vsbtools/materials_dataset/Examples/mg_generation_postprocessing_pipeline.ipynb" \
-    "$ANALYSIS_ROOT/mg_generation_postprocessing_pipeline.ipynb"
-fi
-cd "$ANALYSIS_ROOT"
-"$ANALYSIS_INSTALL_ROOT/launch_jupyter.sh"
+./launch_mattergen_analysis.sh "$SYSTEM_ROOT"
 ```
 
-Open `mg_generation_postprocessing_pipeline.ipynb`. For the system created in
-this guide, use this exact run order:
+The launcher copies `mattergen_analysis.ipynb` into
+`$SYSTEM_ROOT/analysis-run/`, selects the managed VSBTools/MatterGen/GRACE
+environments, and opens Jupyter. Edit the inline `SCENARIO_YAML` and
+`ANALYSIS_YAML` strings when you need different stages, descriptors, losses, or
+plot settings. Then run the notebook cells in order. They discover every
+homogeneous `gen_N` root, collect all nested `run_N` outputs, run the scenario,
+build `table.txt` and Pareto-front files, and save figures below
+`$SYSTEM_ROOT/analysis-run`.
 
-1. Run Section 0, **Load the installed external environments**.
-2. Skip Sections 1–3; they operate on packaged demonstration datasets.
-3. Run Sections 4.1 and 4.2.
-4. Run exactly one callable cell: 4.3A for supported guided metadata, or 4.3B
-   for an unguided search, ranked guidance, grouped species, or a manually
-   selected descriptor.
-5. Run Sections 4.4 and 4.5 to create the histogram/KDE and Pareto figures.
-
-The Section 4 cells read the exported `SYSTEM_ROOT`, discover every generation
-directory, run the scenario, build `table.txt` and Pareto-front files, and save
-figures below `$SYSTEM_ROOT/analysis-run`. They are part of the notebook; no
-Python snippets need to be copied from this guide.
+Complete the selected generation outputs before the first processing run.
+Scenario repositories resume committed stages. After adding or removing a
+`run_N`, rerun discovery so the changed input tree receives a new
+processed cache key.
 
 #### 2.4.1 Expected outputs
 
@@ -603,9 +486,9 @@ generated-plus-reference Pareto stages.
 
 ### 2.5 Archive the system
 
-Keep each `gen_N` directory with its own `provenance/` directory. The system
-archive then contains its raw generations, configuration, logs, processed
-datasets, figures, and provenance records.
+Keep every generation output together with its adjacent `provenance/`
+directory. The system archive then contains its raw generations, configuration,
+logs, processed datasets, figures, and provenance records.
 
 Archive one system, including all its generations and provenance, with:
 

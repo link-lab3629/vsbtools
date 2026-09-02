@@ -102,6 +102,37 @@ preserves generation metadata and uses it to analyze guidance-loss
 distributions, target-property distributions, structural descriptors, Pareto
 fronts, and reproducibility metrics.
 
+### Three-file workflow
+
+After one installation, a new chemical system needs only the system directory
+and the three reusable files at the repository root:
+
+1. `generate_mattergen.sh` creates a homogeneous `gen_N` tree for guided or
+   unguided generation. Every invocation is stored as `run_N`, including a
+   single run in `run_1`; `--runs N` creates the requested sequence.
+2. `launch_mattergen_analysis.sh` copies `mattergen_analysis.ipynb` to
+   `<SYSTEM_ROOT>/analysis-run/` and launches it with the VSBTools, MatterGen,
+   and GRACE environments.
+3. `mattergen_analysis.ipynb` contains the editable YAML scenario, descriptor
+   and loss configuration, processing stages, summary tables, histograms/KDEs,
+   Pareto plots, and a run manifest.
+
+For example:
+
+```bash
+SYSTEM_ROOT="$PWD/work/Ni-Pd-H"
+./generate_mattergen.sh "$SYSTEM_ROOT" --runs 1 --batch-size 20
+./generate_mattergen.sh "$SYSTEM_ROOT" --runs 10 \
+  --guidance "{'group_coordination': {'mode':'huber', 'alpha':3.0, '[Pd,Ni]-H':6}}"
+./launch_mattergen_analysis.sh "$SYSTEM_ROOT"
+```
+
+The scripts discover the managed environment from `workflow_env.sh`, the
+`VSBTOOLS_WORKFLOW_ENV` variable, or the per-system `.vsbtools-env-root`
+marker. Pass `--env-root PATH` once when the environment is in a custom
+location; later commands reuse the recorded path. The launcher preserves edits
+to a system notebook, and `--refresh` restores the repository template.
+
 For an installation reused across generation and analysis projects, keep the
 VSBTools and scout-matter checkouts beside each other and run the repository-root
 installer:
@@ -239,11 +270,12 @@ environment.
 See the [end-to-end MatterGen guide](vsbtools/materials_dataset/Doc/MatterGen_End_to_End.md)
 for generation, postprocessing, Pareto fronts, and distribution plots.
 
-The end-to-end guide also shows how to keep one work tree per system and save a
-provenance record under each generation's
-`WORK_ROOT/<system>/raw-generations/<mode>/gen_N/provenance/` directory before
-archiving that system's results. Each `gen_N` groups one generation setting;
-use a new `gen_N` when guidance, targets, or other meaningful settings change.
+The end-to-end guide also shows how to keep one work tree per system. Every
+MatterGen invocation automatically saves provenance beside its generated
+structures under its `run_N` directory. Each `gen_N` groups one generation
+setting; use a new `gen_N` when guidance, targets, or other meaningful settings
+change. Postprocessing reads each homogeneous `gen_N` tree recursively, and
+legacy `batch_N` directories remain readable when older data is analyzed.
 
 A packaged reproducibility pipeline is provided for the MatterGen guidance
 analysis workflow. It starts from the raw-generation archives in

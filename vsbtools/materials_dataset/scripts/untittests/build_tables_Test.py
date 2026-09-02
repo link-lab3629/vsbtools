@@ -1,9 +1,14 @@
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from ...io.zip_handling import exploded_zip_tree
 from ...io.yaml_csv_poscars import read
 
-from ..build_tables import build_guidance_summary_table
+from ..build_tables import (
+    build_guidance_summary_for_processed_system,
+    build_guidance_summary_table,
+)
 
 
 ZIPPED_PROCESSED_ROOT = (
@@ -53,3 +58,51 @@ class yaml_csv_poscars_Test(unittest.TestCase):
         self.assertTrue((output_path / "table.txt").is_file())
         self.assertTrue(list(output_path.glob("*pf_1.csv")))
         self.assertTrue(list(output_path.glob("*pf_1_table.txt")))
+
+
+class processed_system_summary_Test(unittest.TestCase):
+
+    def test_summarizes_every_non_guided_repository_after_guided_repositories(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            system_root = Path(tmpdir)
+            repo_names = (
+                "guided_generation",
+                "first__guidance_None__generation",
+                "second__guidance_None__generation",
+            )
+            for repo_name in repo_names:
+                (system_root / repo_name).mkdir()
+
+            processed = []
+
+            def build_repo(repo_path, *, callables=None, **_kwargs):
+                repo_name = Path(repo_path).name
+                processed.append(repo_name)
+                updated = dict(callables or {})
+                updated[repo_name] = repo_name
+                return updated
+
+            def collect_artifacts(repo_path, **_kwargs):
+                return {"repo": Path(repo_path), "stages": []}
+
+            with patch(
+                "vsbtools.materials_dataset.scripts.build_tables."
+                "build_guidance_summary_for_repo",
+                side_effect=build_repo,
+            ), patch(
+                "vsbtools.materials_dataset.scripts.build_tables."
+                "collect_guidance_summary_artifacts",
+                side_effect=collect_artifacts,
+            ):
+                report = build_guidance_summary_for_processed_system(
+                    system_root,
+                    callables={},
+                    return_report=True,
+                )
+
+            self.assertEqual(processed, list(repo_names))
+            self.assertEqual(list(report), list(repo_names))
+            self.assertEqual(
+                [item["repo"].name for item in report.generation_reports],
+                list(repo_names),
+            )

@@ -375,12 +375,15 @@ def process_generation_dir(
     batch_metadata_file: str | Path = "input_parameters.txt",
     ignore_unknown_existing_stages: bool = True,
 ) -> DatasetRepo | None:
-    """Run a scenario pipeline for one generated-structures directory.
+    """Run a scenario pipeline for one generated-structures directory tree.
 
     The repository location is derived from MatterGen batch metadata as
     ``<repo_root>/<chemical-system>/<serialized-input-parameters>``. Existing
     repository nodes are loaded into the pipeline context first, so only missing
-    scenario stages are executed and committed.
+    scenario stages are executed and committed. Structure files and batch
+    metadata are discovered recursively, which lets one homogeneous generation
+    root collect ``multiple_runs.sh``-style ``run_N`` outputs into one dataset.
+    Legacy ``batch_N`` trees remain readable for existing experiments.
 
     Returns the repository used for the generation, or ``None`` when the
     directory does not contain the requested batch metadata file.

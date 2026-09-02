@@ -2,6 +2,8 @@
 .tmp
 */.idea/
 *.txt
+!MATTERGEN_INSTRUCTIONS.txt
+/.codex_work/
 *.pkl
 *.log
 log

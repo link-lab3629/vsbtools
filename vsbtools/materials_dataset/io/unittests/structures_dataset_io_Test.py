@@ -82,7 +82,9 @@ class batch_metadata_Test(unittest.TestCase):
                 "\n".join((
                     "output_path: results/run_1",
                     "batch_size: 12",
+                    "num_batches: 2",
                     "gpu_memory_gb: 11.25",
+                    "force_gpu: 0",
                     "print_loss: False",
                     "properties_to_condition_on: {'chemical_system': 'Cu-Si-P'}",
                     "guidance: {'environment': {'mode': 'huber', 'Cu-P': [3, 2.9]}}",
@@ -95,7 +97,9 @@ class batch_metadata_Test(unittest.TestCase):
                 "\n".join((
                     "output_path: results/run_2",
                     "batch_size: 24",
+                    "num_batches: 5",
                     "gpu_memory_gb: 80",
+                    "force_gpu: 1",
                     "print_loss: True",
                     "properties_to_condition_on: {'chemical_system': 'Cu-Si-P'}",
                     "guidance: {'environment': {'mode': 'huber', 'Cu-P': [3, 2.9]}}",
